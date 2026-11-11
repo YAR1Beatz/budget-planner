@@ -225,12 +225,25 @@
     return rows.some((row) => parseAmount(row && row.amount) > 0);
   }
 
+  function sanitizeIcon(value) {
+    if (value == null) return "";
+    const s = String(value).trim();
+    if (!s || s.length > 16) return "";
+    if (/[\u0000-\u001f<>]/.test(s)) return "";
+    return s;
+  }
+
   function cloneEntries(rows) {
-    return (rows || []).map((row) => ({
-      id: row.id,
-      name: row.name,
-      amount: String(row.amount ?? "0"),
-    }));
+    return (rows || []).map((row) => {
+      const entry = {
+        id: row.id,
+        name: row.name,
+        amount: String(row.amount ?? "0"),
+      };
+      const icon = sanitizeIcon(row && row.icon);
+      if (icon) entry.icon = icon;
+      return entry;
+    });
   }
 
   function nextIdFrom(items, extra) {
@@ -617,6 +630,7 @@
     addMonthsToKey,
     nextMonthKey,
     monthHasData,
+    sanitizeIcon,
     cloneEntries,
     nextIdFrom,
     expenseBars,

@@ -74,11 +74,16 @@
     if (!Array.isArray(rows) || rows.length === 0) {
       return Calc.cloneEntries(fallback);
     }
-    return rows.map((row, index) => ({
-      id: Number.isFinite(Number(row && row.id)) ? Number(row.id) : index + 1,
-      name: row && row.name != null ? String(row.name) : "",
-      amount: row && row.amount != null ? String(row.amount) : "0",
-    }));
+    return rows.map((row, index) => {
+      const entry = {
+        id: Number.isFinite(Number(row && row.id)) ? Number(row.id) : index + 1,
+        name: row && row.name != null ? String(row.name) : "",
+        amount: row && row.amount != null ? String(row.amount) : "0",
+      };
+      const icon = Calc.sanitizeIcon(row && row.icon);
+      if (icon) entry.icon = icon;
+      return entry;
+    });
   }
 
   function sanitizeContributions(rows) {
@@ -217,6 +222,8 @@
     const remap = (rows) =>
       (rows || []).map((row) => {
         const entry = { id: nextId, name: row.name, amount: String(row.amount ?? "0") };
+        const icon = Calc.sanitizeIcon(row && row.icon);
+        if (icon) entry.icon = icon;
         nextId += 1;
         return entry;
       });

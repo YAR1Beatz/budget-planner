@@ -242,6 +242,7 @@
       renderPhoneTabBar(),
       modal ? renderModal() : "",
       authOpen ? renderAuthModal() : "",
+      iconPicker ? renderIconPicker() : "",
       navOpen ? '<div class="nav-backdrop" data-action="close-nav"></div>' : "",
     ].join("");
     fitSidebarNumbers();
@@ -399,6 +400,70 @@
     if (/student|stud|educ/.test(n)) return "🎓";
     if (/credit|card/.test(n)) return "💳";
     return "🏦";
+  }
+
+  const ICON_CHOICES = [
+    "💼", "💵", "💰", "🏦", "🏠", "🔑", "🛒", "🍽️", "☕", "🍕",
+    "💡", "💧", "📡", "📱", "💻", "🚌", "🚗", "⛽", "🚲", "🚆",
+    "🎬", "🎵", "📺", "💊", "🏥", "🎲", "🎮", "🎉", "🛍️", "👕",
+    "✈️", "🏖️", "🎁", "🐾", "🧸", "👶", "📄", "☂️", "📦", "🏋️",
+  ];
+
+  let iconPicker = null;
+
+  function rowIcon(row, kind) {
+    const custom = Calc.sanitizeIcon(row && row.icon);
+    return custom || categoryEmoji(row && row.name, kind);
+  }
+
+  function renderIconPicker() {
+    if (!iconPicker) return "";
+    const row = monthRows(iconPicker.kind).find((r) => String(r.id) === String(iconPicker.id));
+    if (!row) return "";
+    const auto = categoryEmoji(row.name, iconPicker.kind);
+    const custom = Calc.sanitizeIcon(row.icon);
+    const current = custom || auto;
+    const autoBtn = [
+      `<button type="button" class="icon-picker-auto${custom ? "" : " is-selected"}" data-action="set-icon" data-kind="${iconPicker.kind}" data-id="${iconPicker.id}" data-icon="" aria-pressed="${custom ? "false" : "true"}">`,
+      `  <span class="icon-picker-auto-emoji" aria-hidden="true">${auto}</span>`,
+      "  <span>Automatic</span>",
+      "</button>",
+    ].join("");
+    const cells = ICON_CHOICES.map((emoji) => {
+      const selected = custom === emoji;
+      return `<button type="button" class="icon-pick${selected ? " is-selected" : ""}" data-action="set-icon" data-kind="${iconPicker.kind}" data-id="${iconPicker.id}" data-icon="${emoji}" aria-label="Use ${emoji}" aria-pressed="${selected ? "true" : "false"}">${emoji}</button>`;
+    }).join("");
+    return [
+      '<div class="icon-picker-layer">',
+      '  <div class="icon-picker-backdrop" data-action="close-icon-picker"></div>',
+      '  <div class="icon-picker" role="dialog" aria-modal="true" aria-label="Choose an icon">',
+      '    <div class="icon-picker-grab" aria-hidden="true"></div>',
+      '    <div class="icon-picker-head">',
+      "      <h2>Choose an icon</h2>",
+      '      <button type="button" class="icon-picker-close" data-action="close-icon-picker" aria-label="Close">×</button>',
+      "    </div>",
+      autoBtn,
+      `    <div class="icon-picker-grid">${cells}</div>`,
+      "  </div>",
+      "</div>",
+    ].join("");
+  }
+
+  function setRowIcon(kind, id, icon) {
+    const row = monthRows(kind).find((r) => String(r.id) === String(id));
+    if (!row) return;
+    const cleaned = Calc.sanitizeIcon(icon);
+    if (cleaned) row.icon = cleaned;
+    else delete row.icon;
+    iconPicker = null;
+    markDirty();
+    renderAll();
+  }
+
+  function closeIconPicker() {
+    if (!iconPicker) return;
+    iconPicker = null;
+    renderAll();
   }
 
   function renderRemainHero(incomeTotal, expenseTotal, remaining) {
@@ -1025,8 +1090,8 @@
         .map((row, index) => {
           return [
             `<div class="entry-row" data-id="${row.id}" data-kind="${kind}">`,
-            `  <span class="drag-handle" draggable="true" data-kind="${kind}" data-id="${row.id}" title="Drag to move" aria-hidden="true">⋮⋮</span>`,
-            `  <span class="ws-emoji" aria-hidden="true">${categoryEmoji(row.name, kind)}</span>`,
+            `  <span class="drag-handle" draggable="true" data-kind="${kind}" data-id="${row.id}" title="Drag to move" role="button" aria-label="Move ${escapeHtml(row.name || title)}" tabindex="0">⋮⋮</span>`,
+            `  <button type="button" class="ws-emoji" data-action="pick-icon" data-kind="${kind}" data-id="${row.id}" aria-label="Change icon for ${escapeHtml(row.name || title)}">${rowIcon(row, kind)}</button>`,
             `  <textarea class="input name-input" data-field="name" data-kind="${kind}" data-id="${row.id}" rows="2" aria-label="${escapeHtml(title)} ${index + 1} name">${escapeHtml(
               row.name
             )}</textarea>`,
@@ -1628,6 +1693,10 @@
     document.querySelectorAll(".drop-before, .drop-after").forEach((el) => el.classList.remove("drop-before", "drop-after"));
   }
   function onDragStart(event) {
+    if (pointerDrag || isPhone()) {
+      event.preventDefault();
+      return;
+    }
     const handle = event.target.closest && event.target.closest(".drag-handle");
     if (!handle) return;
     dragInfo = { kind: handle.dataset.kind, id: handle.dataset.id };
@@ -1663,9 +1732,102 @@
     moveRow(info.kind, info.id, t.row.dataset.id, t.after);
   }
   function onDragEnd() {
+    if (pointerDrag) return;
     dragInfo = null;
     clearDropMarks();
     document.querySelectorAll(".dragging").forEach((el) => el.classList.remove("dragging"));
+  }
+
+  let pointerDrag = null;
+
+  function usesPointerReorder(event) {
+    if (event && event.pointerType && event.pointerType !== "mouse") return true;
+    return isPhone();
+  }
+
+  function dropTargetFromPoint(x, y) {
+    if (!pointerDrag) return null;
+    const dragged = pointerDrag.row;
+    const prev = dragged.style.pointerEvents;
+    dragged.style.pointerEvents = "none";
+    const el = document.elementFromPoint(x, y);
+    dragged.style.pointerEvents = prev;
+    const row = el && el.closest && el.closest(".entry-row[data-id]");
+    if (!row || row.dataset.kind !== pointerDrag.kind) return null;
+    if (String(row.dataset.id) === String(pointerDrag.id)) return null;
+    const rect = row.getBoundingClientRect();
+    return { row, after: y > rect.top + rect.height / 2 };
+  }
+
+  function autoScrollMain(clientY) {
+    const main = document.querySelector(".main");
+    if (!main) return;
+    const rect = main.getBoundingClientRect();
+    const edge = 56;
+    if (clientY < rect.top + edge) main.scrollTop -= 18;
+    else if (clientY > rect.bottom - edge) main.scrollTop += 18;
+  }
+
+  function endPointerDrag() {
+    if (!pointerDrag) return;
+    try {
+      const handle = pointerDrag.handle;
+      if (handle && handle.releasePointerCapture) handle.releasePointerCapture(pointerDrag.pointerId);
+    } catch (err) {}
+    document.body.classList.remove("is-row-dragging");
+    document.querySelectorAll(".dragging").forEach((el) => el.classList.remove("dragging"));
+    clearDropMarks();
+    pointerDrag = null;
+  }
+
+  function onHandlePointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    const handle = event.target.closest && event.target.closest(".drag-handle");
+    if (!handle) return;
+    if (handle.closest(".entry-row-auto")) return;
+    if (!usesPointerReorder(event)) return;
+    const row = handle.closest(".entry-row[data-id]");
+    if (!row) return;
+    event.preventDefault();
+    pointerDrag = {
+      kind: handle.dataset.kind,
+      id: handle.dataset.id,
+      pointerId: event.pointerId,
+      startY: event.clientY,
+      startX: event.clientX,
+      row,
+      handle,
+      moved: false,
+    };
+    try { handle.setPointerCapture(event.pointerId); } catch (err) {}
+    document.body.classList.add("is-row-dragging");
+    row.classList.add("dragging");
+  }
+
+  function onHandlePointerMove(event) {
+    if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) return;
+    event.preventDefault();
+    const dy = event.clientY - pointerDrag.startY;
+    const dx = event.clientX - pointerDrag.startX;
+    if (Math.abs(dy) > 5 || Math.abs(dx) > 5) pointerDrag.moved = true;
+    if (!pointerDrag.moved) return;
+    autoScrollMain(event.clientY);
+    clearDropMarks();
+    const t = dropTargetFromPoint(event.clientX, event.clientY);
+    if (t) t.row.classList.add(t.after ? "drop-after" : "drop-before");
+  }
+
+  function onHandlePointerUp(event) {
+    if (!pointerDrag || event.pointerId !== pointerDrag.pointerId) return;
+    const info = pointerDrag;
+    const t = info.moved ? dropTargetFromPoint(event.clientX, event.clientY) : null;
+    endPointerDrag();
+    if (info.moved && t) moveRow(info.kind, info.id, t.row.dataset.id, t.after);
+  }
+
+  function onHandlePointerCancel(event) {
+    if (!pointerDrag || (event && event.pointerId !== pointerDrag.pointerId)) return;
+    endPointerDrag();
   }
 
   function updateRow(kind, id, field, value) {
@@ -2149,6 +2311,16 @@
       case "remove-row":
         removeRow(target.dataset.kind, target.dataset.id);
         break;
+      case "pick-icon":
+        iconPicker = { kind: target.dataset.kind, id: target.dataset.id };
+        renderAll();
+        break;
+      case "set-icon":
+        setRowIcon(target.dataset.kind, target.dataset.id, target.dataset.icon);
+        break;
+      case "close-icon-picker":
+        closeIconPicker();
+        break;
       case "add-goal":
         addGoal();
         break;
@@ -2375,6 +2547,10 @@
 
   function onKey(event) {
     if (event.key === "Escape") {
+      if (iconPicker) {
+        closeIconPicker();
+        return;
+      }
       if (modal) {
         closeModal();
         return;
@@ -2454,10 +2630,15 @@
     document.getElementById("app").addEventListener("change", onChange);
     document.getElementById("app").addEventListener("focusin", onAmountFocus);
     document.getElementById("app").addEventListener("focusout", onAmountBlur);
-    document.getElementById("app").addEventListener("dragstart", onDragStart);
-    document.getElementById("app").addEventListener("dragover", onDragOver);
-    document.getElementById("app").addEventListener("drop", onDrop);
-    document.getElementById("app").addEventListener("dragend", onDragEnd);
+    const appEl = document.getElementById("app");
+    appEl.addEventListener("dragstart", onDragStart);
+    appEl.addEventListener("dragover", onDragOver);
+    appEl.addEventListener("drop", onDrop);
+    appEl.addEventListener("dragend", onDragEnd);
+    appEl.addEventListener("pointerdown", onHandlePointerDown);
+    document.addEventListener("pointermove", onHandlePointerMove, { passive: false });
+    document.addEventListener("pointerup", onHandlePointerUp);
+    document.addEventListener("pointercancel", onHandlePointerCancel);
     document.addEventListener("keydown", onKey);
     renderAll();
     if (window.BudgetSync) {
