@@ -1,0 +1,24 @@
+{
+  "name": "Budget Planner Preview",
+  "short_name": "Budget",
+  "description": "A simple monthly budget planner with savings goals and loan payoff tracking.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F6F0E6",
+  "theme_color": "#F6F0E6",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
