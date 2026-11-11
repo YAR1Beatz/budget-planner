@@ -1098,6 +1098,7 @@ body.is-mac .titlebar {
 .tip-body.slide-back { animation: tipSlideBack 0.35s ease; }
 @keyframes tipSlideNext { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 @keyframes tipSlideBack { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes tipFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .tip-box { overflow: hidden; }
 /* Stronger card separation */
 :root { --card-shadow: 0 1px 3px rgba(58, 46, 40, 0.10), 0 6px 18px rgba(58, 46, 40, 0.10); --card-border: rgba(58, 46, 40, 0.16); }
@@ -1438,8 +1439,36 @@ body.is-mac .titlebar {
     max-width: 100%;
   }
   .theme-select, .titlebar .select { font-size: 16px; }
+
+  /* Tip text stays crisp on iOS: no transform/filter layer at rest, opacity-only fade,
+     integer line box, and no overflow-hidden compositing on the card. Solid background, no backdrop-filter. */
+  .tip-box, .tip-body, .tip-title, .tip-count, .tip-next, .tip-head {
+    transform: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    will-change: auto;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .tip-box {
+    overflow: visible;
+    background: color-mix(in srgb, var(--accent) 9%, var(--surface));
+  }
+  .tip-title, .tip-count, .tip-next, .tip-head { line-height: 18px; }
+  .tip-body {
+    font-size: 13px;
+    line-height: 19px;
+    height: 57px;
+    overflow: hidden;
+  }
+  .tip-body.slide-next,
+  .tip-body.slide-back {
+    animation: tipFadeIn 0.35s ease;
+  }
   @media (prefers-reduced-motion: reduce) {
     .sidebar, .loan-sidebar, .goals-sidebar { transition: none; }
+    .tip-body.slide-next, .tip-body.slide-back { animation: none; }
   }
 }
 

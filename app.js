@@ -619,7 +619,12 @@
     const next = wrap.firstElementChild;
     if (!next) return;
     const body = next.querySelector(".tip-body");
-    if (body && direction) body.classList.add(direction === "back" ? "slide-back" : "slide-next");
+    if (body && direction) {
+      body.classList.add(direction === "back" ? "slide-back" : "slide-next");
+      body.addEventListener("animationend", () => {
+        body.classList.remove("slide-next", "slide-back");
+      }, { once: true });
+    }
     box.replaceWith(next);
   }
 
