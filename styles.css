@@ -1378,9 +1378,87 @@ body.is-mac .titlebar {
   .month-btn { font-size: 15px; padding: 10px 12px; }
   .sidebar-footer .btn { width: 100%; justify-content: center; }
   .save-chip { min-width: 72px; min-height: 36px; }
-  .suggestion-pop { min-width: 0; width: min(520px, calc(100vw - 28px)); left: 0; right: 0; }
-  .modal { width: calc(100vw - 28px); margin: 0 14px; }
+  .suggestion-pop {
+    min-width: 0;
+    width: auto;
+    max-width: 100%;
+    left: 0;
+    right: 0;
+  }
+  .modal-backdrop {
+    padding: 24px max(16px, env(safe-area-inset-right)) 24px max(16px, env(safe-area-inset-left));
+  }
+  .modal { width: 100%; max-width: 420px; margin: 0; }
+
+  html, body {
+    overflow-x: hidden;
+    max-width: 100%;
+    overscroll-behavior-x: none;
+    -webkit-text-size-adjust: 100%;
+  }
+  #app {
+    position: relative;
+    overflow: hidden;
+    overflow-x: hidden;
+    max-width: 100%;
+    clip-path: inset(0);
+  }
+  .shell, .main, .main-inner, .card, .goal-card, .loan-card, .metrics,
+  .page-head, .grid-2, .form-grid, .form-grid-3, .loan-stats, .stack,
+  .goal-top, .loan-top, .row-list, .bar-list, .column-chart-plot {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .titlebar {
+    max-width: 100%;
+    min-width: 0;
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+  .tabs { min-width: 0; flex: 1 1 auto; }
+  .tab { padding: 8px 9px; }
+  .main {
+    padding-left: max(14px, env(safe-area-inset-left));
+    padding-right: max(14px, env(safe-area-inset-right));
+  }
+  .sidebar, .loan-sidebar, .goals-sidebar {
+    position: absolute;
+    width: min(320px, 86%);
+  }
+  .entry-row {
+    grid-template-columns: 22px minmax(0, 1fr) minmax(72px, 108px) 44px;
+  }
+  .contrib-list li.contrib-edit {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 96px) 44px;
+  }
+  .column-chart-plot { gap: 20px; }
+  .column { width: auto; flex: 1 1 0; min-width: 0; max-width: 96px; }
+  .input, .select, .textarea, .input-sm {
+    font-size: 16px;
+    max-width: 100%;
+  }
+  .theme-select, .titlebar .select { font-size: 16px; }
   @media (prefers-reduced-motion: reduce) {
     .sidebar, .loan-sidebar, .goals-sidebar { transition: none; }
   }
+}
+
+@media (hover: none) {
+  .stat-value:hover,
+  .debtfree-mini strong:hover,
+  .metric-value:hover,
+  .debtfree-value:hover,
+  .loan-months-num:hover,
+  .side-widget-big:hover,
+  .next-payoff-days:hover,
+  .column:hover .column-bar,
+  .column:hover .column-value,
+  .column:hover .column-label,
+  .bar-row:hover .bar-track,
+  .bar-row:hover .bar-row-head .bar-label,
+  .bar-row:hover .bar-row-head .bar-amount {
+    transform: none;
+    filter: none;
+  }
+  .suggestion-wrap:hover .suggestion-pop { display: none; }
 }
