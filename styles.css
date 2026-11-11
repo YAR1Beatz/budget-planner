@@ -1325,10 +1325,12 @@ body.is-mac .titlebar {
   .titlebar {
     gap: 8px;
     padding: 0 10px;
-    padding-top: calc(env(safe-area-inset-top) + 5px);
-    align-items: flex-start;
-    height: calc(var(--titlebar-height) + env(safe-area-inset-top));
-    flex-basis: calc(var(--titlebar-height) + env(safe-area-inset-top));
+    padding-top: calc(env(safe-area-inset-top) + 16px);
+    padding-bottom: 8px;
+    align-items: center;
+    /* 16 top + 44 controls + 8 bottom + 1 border = 69 (integer, border-box) */
+    height: calc(69px + env(safe-area-inset-top));
+    flex-basis: calc(69px + env(safe-area-inset-top));
     -webkit-app-region: no-drag;
   }
   .nav-toggle {
@@ -1463,6 +1465,9 @@ body.is-mac .titlebar {
     min-width: 0;
     padding-left: max(10px, env(safe-area-inset-left));
     padding-right: max(10px, env(safe-area-inset-right));
+    padding-top: calc(env(safe-area-inset-top) + 16px);
+    padding-bottom: 8px;
+    align-items: center;
     background: var(--bg);
     -webkit-overflow-scrolling: auto;
     overflow: visible;
@@ -1482,9 +1487,9 @@ body.is-mac .titlebar {
     -webkit-appearance: none;
     font-size: 13px;
     font-weight: 600;
-    line-height: 16px;
-    height: 28px;
-    min-height: 28px;
+    line-height: 20px;
+    height: 36px;
+    min-height: 36px;
     padding: 0 8px;
     box-sizing: border-box;
     width: 100%;
