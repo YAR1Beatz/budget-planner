@@ -2067,17 +2067,15 @@ body.is-mac .titlebar {
 
   .entry-row {
     display: grid;
-    grid-template-columns: 16px 34px minmax(0, 1fr) 40px;
-    grid-template-areas:
-      "drag emoji name x"
-      ". emoji amt amt";
-    gap: 2px 6px;
+    grid-template-columns: 14px 34px minmax(0, 1fr) 74px 40px;
+    grid-template-areas: "drag emoji name amt x";
+    gap: 2px 4px;
     align-items: center;
-    padding: 6px 4px 8px;
+    padding: 6px 2px 8px;
     border-radius: 16px;
   }
   .entry-row .drag-handle { grid-area: drag; }
-  .entry-row .ws-emoji { grid-area: emoji; align-self: start; margin-top: 6px; }
+  .entry-row .ws-emoji { grid-area: emoji; align-self: center; margin-top: 0; }
   .entry-row input[data-field="name"],
   .entry-row-auto input[readonly]:not(.amt-input) { grid-area: name; min-width: 0; }
   /* name is the first non-amount text input */
@@ -2085,14 +2083,20 @@ body.is-mac .titlebar {
   .entry-row input.amt-input,
   .entry-row input[data-field="amount"] {
     grid-area: amt;
-    min-width: 0;
+    box-sizing: border-box;
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     justify-self: stretch;
     text-align: right;
-    padding-top: 0;
-    padding-right: 8px;
-    min-height: 32px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    padding-left: 0;
+    padding-right: 0;
+    border-width: 0;
+    min-height: 44px;
   }
+  .entry-row .btn-icon { width: 40px; height: 40px; }
   .entry-row .btn-icon { grid-area: x; }
   .entry-row-auto .auto-tag { grid-area: x; }
   .ws-emoji,
@@ -2273,20 +2277,23 @@ body.is-mac .titlebar {
   .entry-row > input.input:not(.amt-input),
   .entry-row .name-input {
     width: 100%;
-    overflow-wrap: anywhere;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: break-word;
+    word-break: normal;
     white-space: pre-wrap;
     max-height: none;
     min-height: 44px;
     line-height: 22px;
     overflow: hidden;
+    padding-left: 0;
+    padding-right: 2px;
   }
 }
 
 @media (hover: none) and (max-width: 720px) {
   .entry-row {
-    grid-template-columns: 16px 34px minmax(0, 1fr) 40px;
-    grid-template-areas:
-      "drag emoji name x"
-      ". emoji amt amt";
+    grid-template-columns: 14px 34px minmax(0, 1fr) 74px 40px;
+    grid-template-areas: "drag emoji name amt x";
   }
 }
