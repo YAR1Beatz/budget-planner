@@ -54,6 +54,69 @@
     return Calc.formatMoney(n, state.currency);
   }
 
+  function isPhone() {
+    return window.matchMedia("(max-width: 720px)").matches;
+  }
+
+  function isAmountInput(el) {
+    if (!el || el.tagName !== "INPUT") return false;
+    if (el.classList.contains("amt-input")) return true;
+    if (el.dataset && el.dataset.field === "amount") return true;
+    if (el.dataset && (el.dataset.gfield === "target" || el.dataset.gfield === "saved")) return true;
+    if (el.dataset && el.dataset.cfield === "amount") return true;
+    if (el.readOnly && /amount/i.test(el.getAttribute("aria-label") || "")) return true;
+    return false;
+  }
+
+  function formatWhole(value) {
+    if (value === "" || value == null) return "";
+    const parsed = parseWholeInput(value);
+    if (parsed === "") return "";
+    const n = Number(parsed);
+    if (!Number.isFinite(n)) return "";
+    const loc = state.currency === "DKK" || state.currency === "SEK" || state.currency === "NOK" ? "da-DK" : "en-GB";
+    try {
+      return new Intl.NumberFormat(loc, { maximumFractionDigits: 0, minimumFractionDigits: 0 }).format(Math.round(n));
+    } catch (err) {
+      return String(Math.round(n));
+    }
+  }
+
+  function parseWholeInput(value) {
+    if (value === null || value === undefined) return "";
+    let s = String(value).trim().replace(/\s/g, "").replace(/[^\d,.-]/g, "");
+    if (!s || s === "-" || s === "." || s === ",") return "";
+    const loc = state.currency === "DKK" || state.currency === "SEK" || state.currency === "NOK" ? "da-DK" : "en-GB";
+    if (loc === "da-DK") s = s.replace(/\./g, "").replace(",", ".");
+    else s = s.replace(/,/g, "");
+    const n = Number(s);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.round(n));
+  }
+
+  function rawWhole(value) {
+    const w = parseWholeInput(value);
+    return w;
+  }
+
+  function decorateAmountInputs() {
+    if (!isPhone()) return;
+    document.querySelectorAll("input").forEach((el) => {
+      if (!isAmountInput(el)) return;
+      if (el === document.activeElement) {
+        const raw = rawWhole(el.value);
+        if (raw !== "" && el.value !== raw) el.value = raw;
+        return;
+      }
+      if (el.value === "") return;
+      el.value = formatWhole(el.value);
+    });
+  }
+
+  function amountValueOf(id) {
+    return rawWhole(valueOf(id));
+  }
+
   function resolvedTheme() {
     if (state.theme === "light" || state.theme === "dark" || state.theme === "bright") return state.theme;
     return mediaQuery.matches ? "dark" : "light";
@@ -165,6 +228,7 @@
     const app = document.getElementById("app");
     app.innerHTML = [
       renderTitlebar(),
+      renderPhoneHeader(),
       '<div class="shell">',
       state.activeTab === "budget" ? renderSidebar() : "",
       state.activeTab === "goals" ? renderGoalsSidebar() : "",
@@ -175,11 +239,13 @@
       state.activeTab === "goals" ? renderGoals() : "",
       state.activeTab === "loans" ? renderLoans() : "",
       "</div></main></div>",
+      renderPhoneTabBar(),
       modal ? renderModal() : "",
       authOpen ? renderAuthModal() : "",
       navOpen ? '<div class="nav-backdrop" data-action="close-nav"></div>' : "",
     ].join("");
     fitSidebarNumbers();
+    decorateAmountInputs();
     const modalInput = document.getElementById("modal-input");
     if (modalInput) {
       modalInput.focus();
@@ -237,6 +303,171 @@
     ].join("");
   }
 
+  function profileName() {
+    const active = activeProfile();
+    return (active && active.name) || "there";
+  }
+
+  function profileInitial() {
+    const name = String(profileName() || "").trim();
+    return name ? name.charAt(0).toUpperCase() : "M";
+  }
+
+  const WS_ICON_BUDGET = '<svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true"><rect x="3.5" y="6.5" width="19" height="15" rx="3" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 11.5h19" stroke="currentColor" stroke-width="1.7"/><path d="M8 16.5h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+  const WS_ICON_GOALS = '<svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true"><circle cx="13" cy="13" r="8.5" stroke="currentColor" stroke-width="1.7"/><circle cx="13" cy="13" r="4.5" stroke="currentColor" stroke-width="1.7"/><circle cx="13" cy="13" r="1.6" fill="currentColor"/></svg>';
+  const WS_ICON_LOANS = '<svg width="22" height="22" viewBox="0 0 26 26" fill="none" aria-hidden="true"><path d="M4.5 11 13 5.5 21.5 11" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M7 10.5V19.5h12V10.5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M4.5 19.5h17" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>';
+
+  function renderPhoneHeader() {
+    const kicker = "Hi " + escapeHtml(profileName());
+    let title = escapeHtml(Calc.monthTitle(state.selectedMonth));
+    let trailing = `<button class="ws-avatar" type="button" data-action="toggle-nav" aria-label="Open menu and profiles">${escapeHtml(profileInitial())}</button>`;
+    if (state.activeTab === "goals") {
+      title = "Your goals";
+      trailing = '<button class="ws-add" type="button" data-action="scroll-add">+ Add</button>';
+    } else if (state.activeTab === "loans") {
+      title = "Loans";
+      trailing = '<button class="ws-add" type="button" data-action="scroll-add">+ Add</button>';
+    }
+    return [
+      '<header class="ws-header">',
+      '  <button class="ws-menu btn-icon nav-toggle" type="button" data-action="toggle-nav" aria-label="Open menu">☰</button>',
+      '  <div class="ws-hello">',
+      `    <div class="ws-hi">${kicker}</div>`,
+      `    <h1 class="ws-title">${title}</h1>`,
+      "  </div>",
+      "  " + trailing,
+      "</header>",
+    ].join("");
+  }
+
+  function renderPhoneTabBar() {
+    const tabs = [
+      { id: "budget", label: "Budget", icon: WS_ICON_BUDGET },
+      { id: "goals", label: "Goals", icon: WS_ICON_GOALS },
+      { id: "loans", label: "Loans", icon: WS_ICON_LOANS },
+    ];
+    return [
+      '<nav class="ws-tabbar" aria-label="Sections">',
+      tabs
+        .map(
+          (tab) =>
+            `<button class="ws-tab${state.activeTab === tab.id ? " is-active" : ""}" type="button" data-action="tab" data-tab="${tab.id}" aria-selected="${
+              state.activeTab === tab.id
+            }">${tab.icon}<span>${tab.label}</span></button>`
+        )
+        .join(""),
+      "</nav>",
+    ].join("");
+  }
+
+  function categoryEmoji(name, kind) {
+    const n = String(name || "").toLowerCase();
+    const rules = [
+      [/salary|wage|paycheck|take-home|løn/, "💼"],
+      [/other income|freelance|bonus/, "💰"],
+      [/hous|rent|mortgage|bolig|home/, "🏠"],
+      [/groc|food|supermarket|mad|merk/, "🛒"],
+      [/util|electric|power|water|internet|energy|el |varme/, "💡"],
+      [/transport|transit|bus|train|fuel|petrol|gas|ticket|car fare/, "🚌"],
+      [/subscr|stream|netflix|spotify|apple|tv/, "🎬"],
+      [/leisure|fritid|fun|hobby|entertainment|other/, "🎲"],
+      [/travel|ferie|holiday|trip|vacation/, "✈️"],
+      [/emerg|rainy|buffer|safety/, "☂️"],
+      [/loan|debt|payoff/, "🏦"],
+      [/insur|forsikr/, "📄"],
+      [/health|doctor|medic|apotek|dental/, "💊"],
+      [/child|kids|school|børn/, "🧸"],
+      [/phone|mobil|cell/, "📱"],
+      [/eat|restaurant|cafe|dining|coffee/, "🍽️"],
+      [/cloth|shoe|shop|tøj/, "🛍️"],
+      [/pet|dog|cat/, "🐾"],
+    ];
+    for (let i = 0; i < rules.length; i += 1) {
+      if (rules[i][0].test(n)) return rules[i][1];
+    }
+    return kind === "income" ? "💵" : "📦";
+  }
+
+  function goalEmoji(name) {
+    return categoryEmoji(name, "goal") === "📦" ? "🎯" : categoryEmoji(name, "goal");
+  }
+
+  function loanEmoji(name) {
+    const n = String(name || "").toLowerCase();
+    if (/car|auto|bil/.test(n)) return "🚗";
+    if (/house|home|mortgage|bolig/.test(n)) return "🏠";
+    if (/student|stud|educ/.test(n)) return "🎓";
+    if (/credit|card/.test(n)) return "💳";
+    return "🏦";
+  }
+
+  function renderRemainHero(incomeTotal, expenseTotal, remaining) {
+    const shortfall = remaining < 0;
+    return [
+      '<section class="ws-hero">',
+      '  <div class="ws-hero-top">',
+      `    <div class="ws-hero-kicker">${shortfall ? "Shortfall" : "Remaining"}</div>`,
+      renderSyncChip("hero"),
+      "  </div>",
+      `  <div class="ws-hero-value${shortfall ? " is-short" : ""}">${escapeHtml(money(Math.abs(remaining)))}</div>`,
+      '  <div class="ws-split">',
+      `    <div class="ws-cell"><div class="ws-lbl">Income</div><div class="ws-val in">${escapeHtml(money(incomeTotal))}</div></div>`,
+      `    <div class="ws-cell"><div class="ws-lbl">Expenses</div><div class="ws-val out">−${escapeHtml(money(expenseTotal))}</div></div>`,
+      "  </div>",
+      "</section>",
+    ].join("");
+  }
+
+  function renderLoanHero(loans, debt, starting, paid, paidPct) {
+    const info = debtFreeInfo(loans);
+    return [
+      '<section class="ws-hero ws-loan-hero">',
+      '  <div class="ws-hero-top">',
+      `    <div class="ws-hero-kicker">${escapeHtml(debtUnitTitle())}</div>`,
+      renderSyncChip("hero"),
+      "  </div>",
+      `  <div class="ws-hero-value${info.tone ? " " + info.tone : ""}">${escapeHtml(info.value)}</div>`,
+      info.detail ? `  <p class="ws-hero-detail">${escapeHtml(info.detail)}</p>` : "",
+      '  <div class="ws-split">',
+      `    <div class="ws-cell"><div class="ws-lbl">Total debt</div><div class="ws-val">${escapeHtml(money(debt))}</div></div>`,
+      `    <div class="ws-cell"><div class="ws-lbl">Monthly payoff</div><div class="ws-val out">${escapeHtml(money(loanMonthlyTotal()))}</div></div>`,
+      "  </div>",
+      starting > 0
+        ? `  <div class="ws-loan-paid"><span>Paid off so far</span><strong>${escapeHtml(money(paid))}</strong><span class="ws-loan-pct">${paidPct}%</span></div><div class="progress-track ws-hero-track"><div class="progress-fill" style="width:${paidPct}%;background:${progressColour(paidPct)}"></div></div>`
+        : "",
+      "</section>",
+    ].join("");
+  }
+
+  function largeGoalRing(pct) {
+    const r = 52;
+    const c = 2 * Math.PI * r;
+    const fill = (Math.max(0, Math.min(100, pct)) / 100) * c;
+    const color = progressColour(pct);
+    return [
+      '<div class="ws-goal-ring" aria-hidden="true">',
+      '  <svg width="128" height="128" viewBox="0 0 128 128">',
+      `    <circle cx="64" cy="64" r="${r}" fill="none" stroke="var(--ws-track, #F0E6D8)" stroke-width="12"/>`,
+      `    <circle cx="64" cy="64" r="${r}" fill="none" stroke="${color}" stroke-width="12" stroke-linecap="round"`,
+      `      stroke-dasharray="${fill.toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 64 64)"/>`,
+      "  </svg>",
+      `  <div class="ws-ring-label">${Math.round(pct)}%</div>`,
+      "</div>",
+    ].join("");
+  }
+
+  function renderSidebarTools(opts) {
+    const prev = previousMonthKey();
+    return [
+      '<div class="sidebar-phone-tools">',
+      currencySelect(),
+      opts && opts.copyLast && prev
+        ? `<button class="btn" type="button" data-action="copy-last">Copy ${escapeHtml(Calc.monthShortTitle(prev))}</button>`
+        : "",
+      "</div>",
+    ].join("");
+  }
+
   function syncLabel(place) {
     const status = syncSnapshot.status;
     if (status === "synced") return "Synced";
@@ -260,7 +491,7 @@
 
   function refreshSyncChip() {
     document.querySelectorAll(".sync-chip").forEach((chip) => {
-      const place = chip.classList.contains("sync-chip-titlebar") ? "titlebar" : "sidebar";
+      const place = chip.classList.contains("sync-chip-sidebar") ? "sidebar" : "titlebar";
       chip.dataset.status = syncSnapshot.status;
       chip.textContent = syncLabel(place);
       if (syncSnapshot.status === "error" && syncSnapshot.error) chip.title = syncSnapshot.error;
@@ -379,6 +610,7 @@
     return [
       '<nav class="sidebar goals-sidebar" aria-label="Budget">',
       renderProfileSwitcher(),
+      renderSidebarTools(),
       '  <div class="sidebar-footer">',
       renderThemeSelect("sidebar-theme"),
       renderSyncChip("sidebar"),
@@ -410,6 +642,7 @@
         .join(""),
       "  </div>",
       renderSidebarWidgets(),
+      renderSidebarTools({ copyLast: true }),
       '  <div class="sidebar-footer">',
       '    <button class="btn" type="button" data-action="add-month">Add next month</button>',
       renderThemeSelect("sidebar-theme"),
@@ -567,6 +800,7 @@
   }
 
   let tipIndex = 0;
+  let editingCards = new Set();
 
   function plural(n, word) {
     return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -667,12 +901,15 @@
     }
     return [
       '<div class="tip-box">',
-      '  <div class="tip-head"><span class="tip-title">💡 Tip</span>',
+      '  <div class="tip-badge" aria-hidden="true">💡</div>',
+      '  <div class="tip-main">',
+      '  <div class="tip-head"><span class="tip-title"><span class="tip-ico">💡 </span>Tip<span class="tip-this-month"> this month</span></span>',
       count > 1
         ? `<span class="tip-nav"><button class="tip-next" type="button" data-action="prev-tip" aria-label="Previous tip">‹ Back</button><span class="tip-count">${tipIndex + 1}/${count}</span><button class="tip-next" type="button" data-action="next-tip" aria-label="Next tip">Next ›</button></span>`
         : "",
       "  </div>",
       `  <p class="tip-body">${body}</p>`,
+      "  </div>",
       "</div>",
     ].join("");
   }
@@ -707,6 +944,7 @@
       renderTipBox(remaining, month),
       "  </div>",
       "</div>",
+      renderRemainHero(incomeTotal, expenseTotal, remaining),
       '<p class="lede">Plan one month at a time. Changing currency converts all your amounts at the current exchange rate. Your work is saved on this computer as you type.</p>',
       '<div class="metrics">',
       metric("Income", money(incomeTotal), "", "soft-green"),
@@ -788,10 +1026,11 @@
           return [
             `<div class="entry-row" data-id="${row.id}" data-kind="${kind}">`,
             `  <span class="drag-handle" draggable="true" data-kind="${kind}" data-id="${row.id}" title="Drag to move" aria-hidden="true">⋮⋮</span>`,
-            `  <input class="input" data-field="name" data-kind="${kind}" data-id="${row.id}" value="${escapeHtml(
+            `  <span class="ws-emoji" aria-hidden="true">${categoryEmoji(row.name, kind)}</span>`,
+            `  <textarea class="input name-input" data-field="name" data-kind="${kind}" data-id="${row.id}" rows="2" aria-label="${escapeHtml(title)} ${index + 1} name">${escapeHtml(
               row.name
-            )}" aria-label="${escapeHtml(title)} ${index + 1} name" />`,
-            `  <input class="input" data-field="amount" data-kind="${kind}" data-id="${row.id}" value="${escapeHtml(
+            )}</textarea>`,
+            `  <input class="input amt-input" data-field="amount" data-kind="${kind}" data-id="${row.id}" value="${escapeHtml(
               row.amount
             )}" inputmode="numeric" aria-label="${escapeHtml(title)} ${index + 1} amount in ${state.currency}" />`,
             `  <button class="btn-icon" type="button" data-action="remove-row" data-kind="${kind}" data-id="${row.id}" aria-label="Remove ${escapeHtml(
@@ -806,8 +1045,9 @@
         ? [
             '<div class="entry-row entry-row-auto">',
             '  <span></span>',
+            '  <span class="ws-emoji" aria-hidden="true">🏦</span>',
             '  <input class="input" value="Loans (monthly payoff)" readonly aria-label="Loans monthly payoff, from the Loans tab" />',
-            `  <input class="input" value="${escapeHtml(String(loanMonthlyTotal()))}" readonly aria-label="Loans monthly payoff amount" />`,
+            `  <input class="input amt-input" value="${escapeHtml(String(loanMonthlyTotal()))}" readonly inputmode="numeric" aria-label="Loans monthly payoff amount" />`,
             '  <span class="auto-tag" title="Updates automatically from the Loans tab">Auto</span>',
             "</div>",
           ].join("")
@@ -830,19 +1070,19 @@
       currencySelect(),
       "</div>",
       '<p class="lede">Set a target, keep track of how much you have already saved, and log contributions along the way.</p>',
-      '<section class="card">',
+      '<section class="card" id="add-goal">',
       '  <h2 class="card-title">Add a goal</h2>',
       '  <div class="form-grid">',
       field("goal-name", "Name", "text", "Emergency fund"),
-      field("goal-target", "Target", "decimal", "50000"),
-      field("goal-saved", "Already saved", "decimal", "0"),
+      field("goal-target", "Target", "amount", "50000"),
+      field("goal-saved", "Already saved", "amount", "0"),
       field("goal-deadline", "Reach by (optional)", "date", ""),
       '    <div class="form-actions"><button class="btn btn-primary" type="button" data-action="add-goal">Add goal</button></div>',
       "  </div>",
       "</section>",
       '<div class="stack">',
       goals.length
-        ? goals.map(renderGoalCard).join("")
+        ? goals.map((goal, index) => renderGoalCard(goal, index)).join("")
         : '<p class="empty">No savings goals yet. Add one above to get started.</p>',
       "</div>",
     ].join("");
@@ -869,20 +1109,32 @@
     return line;
   }
 
-  function renderGoalCard(goal) {
+  function renderGoalCard(goal, index) {
     const saved = Calc.goalSavedTotal(goal);
     const target = Calc.parseMoney(goal.target);
     const progress = Calc.goalProgress(goal);
     const contribs = goal.contributions || [];
+    const featured = index === 0;
     return [
-      `<article class="goal-card" data-goal-id="${goal.id}">`,
+      `<article class="goal-card${featured ? " is-featured" : ""}${editingCards.has("goal:" + goal.id) ? " is-editing" : ""}" data-goal-id="${goal.id}">`,
       '  <div class="goal-top">',
-      "    <div>",
+      '    <div class="ws-goal-ident">',
+      `      <span class="ws-emoji-badge" aria-hidden="true">${goalEmoji(goal.name)}</span>`,
+      "      <div>",
       `      <h2 class="goal-name">${escapeHtml(goal.name || "Untitled goal")}</h2>`,
       `      <div class="goal-meta">${escapeHtml(money(saved))} of ${escapeHtml(money(target))}</div>`,
+      "      </div>",
       "    </div>",
+      '    <div class="goal-top-actions">',
+      `    <button class="btn btn-quiet btn-small ws-edit-toggle" type="button" data-action="toggle-edit" data-kind="goal" data-id="${goal.id}">${editingCards.has("goal:" + goal.id) ? "Done" : "Edit"}</button>`,
       `    <button class="btn btn-quiet btn-small" type="button" data-action="remove-goal" data-id="${goal.id}">Remove</button>`,
+      "    </div>",
       "  </div>",
+      featured
+        ? `<div class="ws-goal-hero">${largeGoalRing(progress)}<div class="ws-goal-saved"><div class="ws-goal-saved-amt">${escapeHtml(money(saved))}</div><div class="ws-goal-saved-of">of ${escapeHtml(money(target))}</div></div></div>`
+        : "",
+      goal.deadline ? `  <div class="deadline-note">${deadlineNote(goal, saved, target)}</div>` : "",
+      `  <div class="ws-edit-block${editingCards.has("goal:" + goal.id) ? " is-open" : ""}">`,
       '  <div class="goal-amounts">',
       '    <label class="deadline-field"><span class="field-label">Target</span>',
       `      <input class="input input-sm amt-input" inputmode="numeric" data-gfield="target" data-goal="${goal.id}" value="${escapeHtml(goal.target)}" aria-label="Goal target in ${state.currency}" /></label>`,
@@ -894,7 +1146,6 @@
       `      <input class="input input-sm" type="date" data-gfield="deadline" data-goal="${goal.id}" value="${escapeHtml(goal.deadline || "")}" aria-label="Reach this goal by date" />`,
       "    </label>",
       goal.deadline ? `    <button class="btn btn-quiet btn-small" type="button" data-action="clear-deadline" data-id="${goal.id}">No date</button>` : "",
-      `    <div class="deadline-note">${deadlineNote(goal, saved, target)}</div>`,
       "  </div>",
       '  <div class="progress-block">',
       '    <div class="progress-label">',
@@ -907,7 +1158,7 @@
       "  </div>",
       '  <div class="form-grid-3">',
       field(`contrib-date-${goal.id}`, "Date", "date", Calc.formatISODate(), { id: `contrib-date-${goal.id}` }),
-      field(`contrib-amount-${goal.id}`, "Contribution", "decimal", "", { id: `contrib-amount-${goal.id}` }),
+      field(`contrib-amount-${goal.id}`, "Contribution", "amount", "", { id: `contrib-amount-${goal.id}` }),
       field(`contrib-note-${goal.id}`, "Note", "text", "Optional", { id: `contrib-note-${goal.id}` }),
       `    <div class="form-actions"><button class="btn btn-primary" type="button" data-action="add-contrib" data-id="${goal.id}">Add</button></div>`,
       "  </div>",
@@ -926,6 +1177,7 @@
             )
             .join("")}</ul>`
         : "",
+      "  </div>",
       "</article>",
     ].join("");
   }
@@ -944,6 +1196,7 @@
       "  </div>",
       currencySelect(),
       "</div>",
+      renderLoanHero(loans, debt, starting, paid, paidPct),
       '<p class="lede">Add each loan, log what you pay, and see how much is left, how far you have come, and when you should be free of it.</p>',
       '<div class="metrics">',
       metric("Total debt", money(debt), loans.length ? `${loans.length} loan${loans.length === 1 ? "" : "s"}` : "No loans yet"),
@@ -963,13 +1216,13 @@
         "</div>",
       ].join(""),
       "</div>",
-      '<section class="card">',
+      '<section class="card" id="add-loan">',
       '  <h2 class="card-title">Add a loan</h2>',
       '  <div class="form-grid">',
       field("loan-name", "Name", "text", "Car loan"),
-      field("loan-balance", "Starting balance", "decimal", "85000"),
+      field("loan-balance", "Starting balance", "amount", "85000"),
       field("loan-rate", "Interest rate %", "decimal", "4.5"),
-      field("loan-payment", "Monthly payment", "decimal", "2500"),
+      field("loan-payment", "Monthly payment", "amount", "2500"),
       "  </div>",
       '  <div class="form-grid" style="margin-top:10px">',
       field("loan-start", "Start date", "date", Calc.formatISODate()),
@@ -1092,6 +1345,7 @@
       `    <div><span>Monthly payoff</span><strong class="soft-red">${escapeHtml(money(loanMonthlyTotal()))}</strong></div>`,
       "  </div>",
       nextPayoffCard(loans, false),
+      renderSidebarTools(),
       '  <div class="sidebar-footer">',
       renderThemeSelect("sidebar-theme"),
       renderSyncChip("sidebar"),
@@ -1171,16 +1425,23 @@
     if (balance <= 0) bigMonths = `<div class="loan-months is-done"><span class="loan-months-num" style="color:${progressColour(100)}">0</span><span class="loan-months-label">Paid off</span></div>`;
     else if (estimate.never) bigMonths = '<div class="loan-months"><span class="loan-months-num">—</span><span class="loan-months-label">months left</span></div>';
     else bigMonths = `<div class="loan-months"><span class="loan-months-num" style="color:${progressColour(progress)}">${estimate.months}</span><span class="loan-months-label">month${estimate.months === 1 ? "" : "s"} left</span></div>`;
+    const editing = editingCards.has("loan:" + loan.id);
     return [
-      `<article class="loan-card" data-loan-id="${loan.id}">`,
+      `<article class="loan-card${editing ? " is-editing" : ""}" data-loan-id="${loan.id}">`,
       '  <div class="loan-top">',
-      "    <div>",
+      '    <div class="ws-goal-ident">',
+      `      <span class="ws-emoji-badge" aria-hidden="true">${loanEmoji(loan.name)}</span>`,
+      "      <div>",
       `      <h2 class="loan-name">${escapeHtml(loan.name || "Untitled loan")}</h2>`,
       `      <div class="loan-meta">${escapeHtml(money(paid))} paid of ${escapeHtml(money(starting))}</div>`,
+      "      </div>",
       "    </div>",
       '    <div class="loan-top-right">',
       bigMonths,
+      '    <div class="goal-top-actions">',
+      `    <button class="btn btn-quiet btn-small ws-edit-toggle" type="button" data-action="toggle-edit" data-kind="loan" data-id="${loan.id}">${editing ? "Done" : "Edit"}</button>`,
       `    <button class="btn btn-quiet btn-small" type="button" data-action="remove-loan" data-id="${loan.id}">Remove</button>`,
+      "    </div>",
       "    </div>",
       "  </div>",
       '  <div class="progress-block">',
@@ -1194,11 +1455,12 @@
       stat("Starting balance", money(starting), "stat-minor"),
       "</div>",
       `<p class="payoff-line">${escapeHtml(payoffText)}</p>`,
+      `  <div class="ws-edit-block${editing ? " is-open" : ""}">`,
       suggestionNote(loan, balance),
       '  <h3 class="subhead">Log a payment</h3>',
       '  <div class="form-grid-3 pay-row">',
       field(`pay-date-${loan.id}`, "Date", "date", Calc.formatISODate(), { id: `pay-date-${loan.id}` }),
-      field(`pay-amount-${loan.id}`, "Amount", "decimal", String(loan.monthlyPayment || ""), { id: `pay-amount-${loan.id}` }),
+      field(`pay-amount-${loan.id}`, "Amount", "amount", String(loan.monthlyPayment || ""), { id: `pay-amount-${loan.id}` }),
       "    <div></div>",
       `    <div class="form-actions"><button class="btn btn-primary" type="button" data-action="add-payment" data-id="${loan.id}">Log payment</button></div>`,
       "  </div>",
@@ -1215,6 +1477,7 @@
             })
             .join("")}</ul>`
         : "",
+      "  </div>",
       "</article>",
     ].join("");
   }
@@ -1228,13 +1491,16 @@
   function field(name, label, kind, placeholder, opts) {
     const id = (opts && opts.id) || name;
     const type = kind === "date" ? "date" : "text";
-    const extra = kind === "decimal" ? ' inputmode="decimal"' : "";
+    const isAmt = kind === "amount" || (opts && opts.amount);
+    const mode = isAmt ? "numeric" : kind === "decimal" ? "decimal" : "";
+    const extra = mode ? ` inputmode="${mode}"` : "";
+    const cls = isAmt ? "input amt-input" : "input";
     const ph = placeholder != null ? ` placeholder="${escapeHtml(placeholder)}"` : "";
     const val = kind === "date" && placeholder ? ` value="${escapeHtml(placeholder)}"` : "";
     return [
       '<label class="field">',
       `  <span class="field-label">${escapeHtml(label)}</span>`,
-      `  <input class="input" id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${type}"${extra}${ph}${val} />`,
+      `  <input class="${cls}" id="${escapeHtml(id)}" name="${escapeHtml(name)}" type="${type}"${extra}${ph}${val} />`,
       "</label>",
     ].join("");
   }
@@ -1283,10 +1549,11 @@
     refreshSidebarDots();
     if (focusKey && focused && focused.dataset) {
       const next = document.querySelector(
-        `input[data-kind="${focused.dataset.kind}"][data-id="${focused.dataset.id}"][data-field="${focused.dataset.field}"]`
+        `[data-kind="${focused.dataset.kind}"][data-id="${focused.dataset.id}"][data-field="${focused.dataset.field}"]`
       );
       if (next) {
         next.focus();
+        if (isAmountInput(next)) next.value = rawWhole(next.value) || next.value;
         try {
           const pos = Number(focused.selectionStart);
           if (Number.isFinite(pos)) next.setSelectionRange(pos, pos);
@@ -1295,6 +1562,7 @@
         }
       }
     }
+    decorateAmountInputs();
   }
 
   function refreshSidebarDots() {
@@ -1327,7 +1595,7 @@
     monthRows(kind).push(row);
     markDirty();
     renderAll();
-    const input = document.querySelector(`.entry-row[data-id="${id}"] input[data-field="name"]`);
+    const input = document.querySelector(`.entry-row[data-id="${id}"] [data-field="name"]`);
     if (input) {
       input.focus();
       input.select();
@@ -1446,8 +1714,8 @@
 
   function addGoal() {
     const name = valueOf("goal-name").trim() || "New goal";
-    const target = valueOf("goal-target");
-    const saved = valueOf("goal-saved") || "0";
+    const target = amountValueOf("goal-target");
+    const saved = amountValueOf("goal-saved") || "0";
     const id = Calc.nextIdFrom(state.goals);
     const deadline = valueOf("goal-deadline") || "";
     state.goals.push({ id, name, target, saved, contributions: [], deadline });
@@ -1469,7 +1737,7 @@
   }
 
   function addContribution(id) {
-    const amount = valueOf(`contrib-amount-${id}`);
+    const amount = amountValueOf(`contrib-amount-${id}`);
     if (Calc.parseMoney(amount) <= 0) {
       showToast("Enter a contribution amount.");
       return;
@@ -1489,9 +1757,9 @@
 
   function addLoan() {
     const name = valueOf("loan-name").trim() || "New loan";
-    const startingBalance = valueOf("loan-balance");
+    const startingBalance = amountValueOf("loan-balance");
     const interestRate = valueOf("loan-rate") || "0";
-    const monthlyPayment = valueOf("loan-payment") || "0";
+    const monthlyPayment = amountValueOf("loan-payment") || "0";
     const startDate = valueOf("loan-start") || Calc.formatISODate();
     if (Calc.parseMoney(startingBalance) <= 0) {
       showToast("Enter a starting balance.");
@@ -1527,7 +1795,7 @@
   function addPayment(id) {
     const loan = state.loans.find((l) => String(l.id) === String(id));
     if (!loan) return;
-    const amount = valueOf(`pay-amount-${id}`);
+    const amount = amountValueOf(`pay-amount-${id}`);
     const date = valueOf(`pay-date-${id}`) || Calc.formatISODate();
     const result = Calc.applyLoanPayment(loan, amount, date);
     if (!result.ok) {
@@ -1925,6 +2193,18 @@
       case "delete-profile":
         promptDeleteProfile(target.dataset.id);
         break;
+      case "toggle-edit": {
+        const key = (target.dataset.kind || "goal") + ":" + target.dataset.id;
+        if (editingCards.has(key)) editingCards.delete(key);
+        else editingCards.add(key);
+        renderAll();
+        break;
+      }
+      case "scroll-add": {
+        const target = document.getElementById(state.activeTab === "loans" ? "add-loan" : "add-goal");
+        if (target) target.scrollIntoView({ block: "start" });
+        break;
+      }
       case "toggle-nav":
         navOpen = !navOpen;
         renderAll();
@@ -1961,6 +2241,44 @@
     return (goal.contributions || []).find((c) => String(c.id) === String(el.dataset.cid)) || null;
   }
 
+  function onAmountFocus(event) {
+    const el = event.target;
+    if (!isPhone() || !isAmountInput(el) || el.readOnly) return;
+    const raw = rawWhole(el.value);
+    if (raw !== "" || el.value) el.value = raw;
+    try { el.select(); } catch (err) {}
+  }
+
+  function onAmountBlur(event) {
+    const el = event.target;
+    if (!isPhone() || !isAmountInput(el) || el.readOnly) return;
+    const raw = rawWhole(el.value);
+    if (el.dataset && el.dataset.field === "amount" && el.dataset.kind && el.dataset.id) {
+      updateRow(el.dataset.kind, el.dataset.id, "amount", raw === "" ? "0" : raw);
+      return;
+    }
+    if (el.dataset && el.dataset.gfield) {
+      const goal = (state.goals || []).find((g) => String(g.id) === String(el.dataset.goal));
+      if (goal && (el.dataset.gfield === "target" || el.dataset.gfield === "saved")) {
+        goal[el.dataset.gfield] = raw === "" ? "0" : raw;
+        markDirty();
+        renderAll();
+        return;
+      }
+    }
+    if (el.dataset && el.dataset.cfield === "amount") {
+      const c = findContrib(el);
+      if (c) {
+        c.amount = raw === "" ? "0" : c.amount;
+        if (raw !== "") c.amount = raw;
+        markDirty();
+        renderAll();
+        return;
+      }
+    }
+    if (raw !== "") el.value = formatWhole(raw);
+  }
+
   function onInput(event) {
     const el = event.target;
     if (el.dataset && el.dataset.cfield) {
@@ -1972,7 +2290,8 @@
       return;
     }
     if (el.dataset && el.dataset.field && el.dataset.kind && el.dataset.id) {
-      updateRow(el.dataset.kind, el.dataset.id, el.dataset.field, el.value);
+      const value = el.dataset.field === "amount" ? (rawWhole(el.value) || el.value) : el.value;
+      updateRow(el.dataset.kind, el.dataset.id, el.dataset.field, value);
     }
   }
 
@@ -2011,8 +2330,8 @@
       if (goal) {
         let v = el.value;
         if (el.dataset.gfield === "target" || el.dataset.gfield === "saved") {
-          const w = Calc.wholeAmount(v);
-          v = w === "" || w == null ? "0" : String(w);
+          const w = rawWhole(v);
+          v = w === "" ? "0" : w;
         }
         goal[el.dataset.gfield] = v;
         markDirty();
@@ -2024,8 +2343,8 @@
       const c = findContrib(el);
       if (!c) return;
       if (el.dataset.cfield === "amount") {
-        const w = Calc.wholeAmount(el.value);
-        c.amount = w === "" || w == null ? "0" : String(w);
+        const w = rawWhole(el.value);
+        c.amount = w === "" ? "0" : w;
       } else {
         c[el.dataset.cfield] = el.value;
       }
@@ -2034,9 +2353,9 @@
       return;
     }
     if (el.dataset && el.dataset.field === "amount" && el.dataset.kind && el.dataset.id) {
-      const w = Calc.wholeAmount(el.value);
-      if (w !== el.value) el.value = w;
-      updateRow(el.dataset.kind, el.dataset.id, "amount", el.value);
+      const w = rawWhole(el.value);
+      if (w !== "") el.value = w;
+      updateRow(el.dataset.kind, el.dataset.id, "amount", w === "" ? "0" : w);
       return;
     }
     if (el.dataset && el.dataset.action === "theme") {
@@ -2133,6 +2452,8 @@
     document.getElementById("app").addEventListener("click", onClick);
     document.getElementById("app").addEventListener("input", onInput);
     document.getElementById("app").addEventListener("change", onChange);
+    document.getElementById("app").addEventListener("focusin", onAmountFocus);
+    document.getElementById("app").addEventListener("focusout", onAmountBlur);
     document.getElementById("app").addEventListener("dragstart", onDragStart);
     document.getElementById("app").addEventListener("dragover", onDragOver);
     document.getElementById("app").addEventListener("drop", onDrop);

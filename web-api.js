@@ -50,7 +50,8 @@
     onTab() {},
   };
 
-  if ("serviceWorker" in navigator && window.location.protocol !== "file:") {
+  const isPreview = /\/preview(?:\/|$)/.test(window.location.pathname);
+  if ("serviceWorker" in navigator && window.location.protocol !== "file:" && !isPreview) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js", { scope: "./" }).catch(() => {});
     });
