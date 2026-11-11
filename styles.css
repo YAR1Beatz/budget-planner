@@ -1099,6 +1099,7 @@ body.is-mac .titlebar {
 @keyframes tipSlideNext { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
 @keyframes tipSlideBack { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
 @keyframes tipFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes navSlideIn { from { transform: translateX(-110%); } to { transform: none; } }
 .tip-box { overflow: hidden; }
 /* Stronger card separation */
 :root { --card-shadow: 0 1px 3px rgba(58, 46, 40, 0.10), 0 6px 18px rgba(58, 46, 40, 0.10); --card-border: rgba(58, 46, 40, 0.16); }
@@ -1346,15 +1347,17 @@ body.is-mac .titlebar {
   .sidebar-theme { display: block; width: 100%; }
   .shell { position: relative; }
   .sidebar, .loan-sidebar, .goals-sidebar {
+    display: none;
     position: fixed;
     top: 0;
     left: 0;
     bottom: 0;
     z-index: 30;
-    width: min(320px, 86vw);
+    width: min(320px, 86%);
     flex-basis: auto;
-    transform: translateX(-110%);
-    transition: transform 0.2s ease;
+    transform: none;
+    visibility: hidden;
+    pointer-events: none;
     padding-top: calc(14px + env(safe-area-inset-top));
     padding-bottom: calc(16px + env(safe-area-inset-bottom));
     box-shadow: none;
@@ -1362,8 +1365,12 @@ body.is-mac .titlebar {
   body.nav-open .sidebar,
   body.nav-open .loan-sidebar,
   body.nav-open .goals-sidebar {
-    transform: translateX(0);
+    display: flex;
+    visibility: visible;
+    pointer-events: auto;
+    transform: none;
     box-shadow: var(--shadow);
+    animation: navSlideIn 0.2s ease;
   }
   .nav-backdrop {
     display: block;
@@ -1393,17 +1400,17 @@ body.is-mac .titlebar {
   .modal { width: 100%; max-width: 420px; margin: 0; }
 
   html, body {
-    overflow-x: hidden;
+    overflow-x: clip;
     max-width: 100%;
     overscroll-behavior-x: none;
     -webkit-text-size-adjust: 100%;
   }
   #app {
-    position: relative;
-    overflow: hidden;
-    overflow-x: hidden;
+    position: static;
+    clip-path: none;
     max-width: 100%;
-    clip-path: inset(0);
+    overflow-x: clip;
+    overflow-y: hidden;
   }
   .shell, .main, .main-inner, .card, .goal-card, .loan-card, .metrics,
   .page-head, .grid-2, .form-grid, .form-grid-3, .loan-stats, .stack,
@@ -1422,6 +1429,9 @@ body.is-mac .titlebar {
     transform: none;
     filter: none;
     will-change: auto;
+    isolation: auto;
+    contain: none;
+    -webkit-overflow-scrolling: auto;
   }
   .titlebar-actions {
     margin-left: 0;
@@ -1479,10 +1489,6 @@ body.is-mac .titlebar {
     padding-left: max(14px, env(safe-area-inset-left));
     padding-right: max(14px, env(safe-area-inset-right));
   }
-  .sidebar, .loan-sidebar, .goals-sidebar {
-    position: absolute;
-    width: min(320px, 86%);
-  }
   .entry-row {
     grid-template-columns: 22px minmax(0, 1fr) minmax(72px, 108px) 44px;
   }
@@ -1524,7 +1530,7 @@ body.is-mac .titlebar {
     animation: tipFadeIn 0.35s ease;
   }
   @media (prefers-reduced-motion: reduce) {
-    .sidebar, .loan-sidebar, .goals-sidebar { transition: none; }
+    .sidebar, .loan-sidebar, .goals-sidebar { transition: none; animation: none; }
     .tip-body.slide-next, .tip-body.slide-back { animation: none; }
   }
 }
