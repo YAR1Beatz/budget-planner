@@ -1399,8 +1399,16 @@ body.is-mac .titlebar {
   }
   .modal { width: 100%; max-width: 420px; margin: 0; }
 
+  /* iOS Safari paints overflow:clip / clip-path layers at a soft scale.
+     The title bar is a non-scrolling child of #app, so clipping #app made
+     Budget / Goals / Loans and Synced look blurry while November 2026
+     (inside the scrolling .main layer) stayed sharp. Clip only .shell/.main.
+     Keep the bar a plain, fully opaque layer: solid background, no
+     backdrop-filter, no transform/filter/will-change, real font weights,
+     integer font sizes, and no synthetic 550 weight. */
   html, body {
-    overflow-x: clip;
+    overflow-x: hidden;
+    overflow-y: hidden;
     max-width: 100%;
     overscroll-behavior-x: none;
     -webkit-text-size-adjust: 100%;
@@ -1409,8 +1417,18 @@ body.is-mac .titlebar {
     position: static;
     clip-path: none;
     max-width: 100%;
-    overflow-x: clip;
+    overflow: visible;
+    transform: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    will-change: auto;
+  }
+  .shell {
+    overflow-x: hidden;
     overflow-y: hidden;
+    min-width: 0;
+    max-width: 100%;
   }
   .shell, .main, .main-inner, .card, .goal-card, .loan-card, .metrics,
   .page-head, .grid-2, .form-grid, .form-grid-3, .loan-stats, .stack,
@@ -1418,20 +1436,38 @@ body.is-mac .titlebar {
     min-width: 0;
     max-width: 100%;
   }
+  .titlebar,
+  .titlebar-actions,
+  .tabs,
+  .tab,
+  .sync-chip-titlebar,
+  .nav-toggle {
+    transform: none;
+    filter: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    will-change: auto;
+    isolation: auto;
+    contain: none;
+    opacity: 1;
+    transition: none;
+    animation: none;
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+    text-shadow: none;
+    letter-spacing: 0;
+    mix-blend-mode: normal;
+  }
   .titlebar {
     max-width: 100%;
     min-width: 0;
     padding-left: max(10px, env(safe-area-inset-left));
     padding-right: max(10px, env(safe-area-inset-right));
     background: var(--bg);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    transform: none;
-    filter: none;
-    will-change: auto;
-    isolation: auto;
-    contain: none;
     -webkit-overflow-scrolling: auto;
+    overflow: visible;
+    box-shadow: none;
+    -webkit-app-region: no-drag;
   }
   .titlebar-actions {
     margin-left: 0;
@@ -1442,7 +1478,10 @@ body.is-mac .titlebar {
     width: 88px;
   }
   .sync-chip-titlebar {
-    font-size: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    font-size: 13px;
+    font-weight: 600;
     line-height: 16px;
     height: 28px;
     min-height: 28px;
@@ -1452,42 +1491,42 @@ body.is-mac .titlebar {
     min-width: 0;
     justify-content: center;
     white-space: nowrap;
+    background: transparent;
   }
   .tabs {
     min-width: 0;
     flex: 1 1 auto;
-    transform: none;
-    filter: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    will-change: auto;
     overflow: visible;
     background: var(--surface-2);
-    -webkit-font-smoothing: antialiased;
+    border-radius: 22px;
+    box-shadow: none;
   }
   .tab {
+    appearance: none;
+    -webkit-appearance: none;
     padding: 8px 9px;
     min-height: 36px;
     height: 36px;
     line-height: 20px;
-    font-size: 13px;
+    font-size: 14px;
+    font-weight: 600;
     flex: 1 1 0;
     min-width: 0;
-    transform: none;
-    filter: none;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    will-change: auto;
-    -webkit-font-smoothing: antialiased;
+    border-radius: 18px;
+    background: transparent;
+    box-shadow: none;
   }
   .tab[aria-selected="true"] {
     background: var(--surface);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
+    color: var(--text);
+    box-shadow: none;
+    font-weight: 600;
   }
   .main {
     padding-left: max(14px, env(safe-area-inset-left));
     padding-right: max(14px, env(safe-area-inset-right));
+    overflow-x: hidden;
+    overflow-y: auto;
   }
   .entry-row {
     grid-template-columns: 22px minmax(0, 1fr) minmax(72px, 108px) 44px;
