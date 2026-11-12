@@ -122,7 +122,12 @@
   }
 
   function applyTheme() {
-    document.documentElement.setAttribute("data-theme", resolvedTheme());
+    const theme = resolvedTheme();
+    document.documentElement.setAttribute("data-theme", theme);
+    // Match the iPhone status bar to the solid header colour of each theme.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    const colors = { light: "#F8F1E8", dark: "#1C1814", bright: "#FBF8FF" };
+    if (meta && colors[theme] && meta.getAttribute("content") !== colors[theme]) meta.setAttribute("content", colors[theme]);
   }
 
   function currentMonth() {
@@ -209,15 +214,60 @@
 
   function selectMonth(key) {
     state.selectedMonth = key;
+    navOpen = false;
+    monthPickerOpen = false;
     markDirty();
     renderAll();
+    if (isPhone()) return; // no surprise keyboard on the phone
     const first = document.querySelector(".entry-row input");
-    if (first) first.focus();
+    focusInPlace(first);
   }
 
   /* ——— Rendering ——— */
 
+  // Re-rendering replaces the whole page, which resets every scroll position.
+  // Remember where each scroller was and put it back, unless the tab changed.
+  let lastRenderedTab = null;
+  const SCROLLERS = [".main", ".sidebar", ".goals-sidebar", ".loan-sidebar"];
+
+  function captureScroll() {
+    const se = document.scrollingElement || document.documentElement;
+    const saved = { tab: lastRenderedTab, win: window.scrollY || (se ? se.scrollTop : 0), els: {} };
+    SCROLLERS.forEach((sel) => {
+      const el = document.querySelector(sel);
+      if (el) saved.els[sel] = el.scrollTop;
+    });
+    return saved;
+  }
+
+  function restoreScroll(saved) {
+    if (!saved || saved.tab !== state.activeTab) return;
+    SCROLLERS.forEach((sel) => {
+      const el = document.querySelector(sel);
+      if (el && saved.els[sel] != null && el.scrollTop !== saved.els[sel]) el.scrollTop = saved.els[sel];
+    });
+    if (Math.abs((window.scrollY || 0) - saved.win) > 1) window.scrollTo(0, saved.win);
+  }
+
+  // Focus without the browser jumping; nudge into view only when off screen.
+  function focusInPlace(el, opts) {
+    if (!el) return;
+    try {
+      el.focus({ preventScroll: true });
+    } catch (err) {
+      el.focus();
+    }
+    if (opts && opts.select && el.select) el.select();
+    if (opts && opts.reveal) {
+      const rect = el.getBoundingClientRect();
+      const top = 90;
+      const bottom = window.innerHeight - 110;
+      if (rect.top < top || rect.bottom > bottom) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }
+  }
+
   function renderAll() {
+    const savedScroll = captureScroll();
     applyTheme();
     const isMac = window.budgetAPI && window.budgetAPI.platform === "darwin";
     document.body.classList.toggle("is-mac", !!isMac);
@@ -242,19 +292,21 @@
       modal ? renderModal() : "",
       authOpen ? renderAuthModal() : "",
       iconPicker ? renderIconPicker() : "",
+      monthPickerOpen ? renderMonthPicker() : "",
       navOpen ? '<div class="nav-backdrop" data-action="close-nav"></div>' : "",
     ].join("");
+    restoreScroll(savedScroll);
+    lastRenderedTab = state.activeTab;
     fitSidebarNumbers();
     decorateAmountInputs();
     const modalInput = document.getElementById("modal-input");
     if (modalInput) {
-      modalInput.focus();
-      modalInput.select();
+      focusInPlace(modalInput, { select: true });
     } else if (authOpen) {
       const active = document.activeElement;
       const inAuth = active && (active.id === "sync-email" || active.id === "sync-password");
       const emailInput = document.getElementById("sync-email");
-      if (!inAuth && emailInput && !syncSnapshot.user) emailInput.focus();
+      if (!inAuth && emailInput && !syncSnapshot.user) focusInPlace(emailInput);
     }
   }
 
@@ -341,7 +393,9 @@
 
   function renderPhoneHeader() {
     const kicker = "Hi " + escapeHtml(profileName());
-    let title = escapeHtml(Calc.monthTitle(state.selectedMonth));
+    let title = `<button class="ws-title-btn" type="button" data-action="open-month-picker" aria-haspopup="dialog" aria-label="${escapeHtml(
+      Calc.monthTitle(state.selectedMonth)
+    )}, choose month">${escapeHtml(Calc.monthTitle(state.selectedMonth))}<span class="ws-title-caret" aria-hidden="true">▾</span></button>`;
     let trailing = `<button class="ws-avatar" type="button" data-action="toggle-nav" aria-label="Open menu and profiles">${escapeHtml(profileInitial())}</button>`;
     if (state.activeTab === "goals") {
       title = "Your goals";
@@ -431,6 +485,38 @@
   ];
 
   let iconPicker = null;
+  let monthPickerOpen = false;
+
+  // Phone: quick month switcher opened from the big month title.
+  function renderMonthPicker() {
+    const keys = Object.keys(state.months).sort();
+    const items = keys
+      .map((key) => {
+        const selected = key === state.selectedMonth;
+        const saved = Calc.monthHasData(state.months[key]);
+        return [
+          `<button type="button" class="month-pick${selected ? " is-selected" : ""}" data-action="select-month" data-month="${key}" aria-current="${selected ? "true" : "false"}">`,
+          `  <span>${escapeHtml(Calc.monthTitle(key))}</span>`,
+          selected ? '  <span class="month-pick-check" aria-hidden="true">✓</span>' : saved ? '  <span class="dot" aria-hidden="true"></span>' : "",
+          "</button>",
+        ].join("");
+      })
+      .join("");
+    return [
+      '<div class="icon-picker-layer month-picker-layer">',
+      '  <div class="icon-picker-backdrop" data-action="close-month-picker"></div>',
+      '  <div class="icon-picker month-picker" role="dialog" aria-modal="true" aria-label="Choose a month">',
+      '    <div class="icon-picker-grab" aria-hidden="true"></div>',
+      '    <div class="icon-picker-head">',
+      "      <h2>Choose a month</h2>",
+      '      <button type="button" class="icon-picker-close" data-action="close-month-picker" aria-label="Close">×</button>',
+      "    </div>",
+      `    <div class="month-pick-list">${items}</div>`,
+      '    <button class="btn month-pick-add" type="button" data-action="add-month">Add next month</button>',
+      "  </div>",
+      "</div>",
+    ].join("");
+  }
 
   function rowIcon(row, kind) {
     const custom = Calc.sanitizeIcon(row && row.icon);
@@ -915,7 +1001,7 @@
     if (t.kind === "loan-start") {
       return t.after <= 0
         ? `Use ${amt} this month to pay off ${nm} completely.`
-        : `${nm} has no monthly payment. Use ${amt} this month to bring it down to <strong>${escapeHtml(money(t.after))}</strong>.`;
+        : `${nm} has no monthly payment. Use ${amt} this month to bring it down to <strong>${escapeHtml(money(t.after))}</strong>${/\.$/.test(money(t.after)) ? "" : "."}`;
     }
     if (t.kind === "goal-faster") {
       if (t.reached) return `Put ${amt} into ${nm} this month and you reach the goal right away.`;
@@ -1649,7 +1735,7 @@
         `[data-kind="${focused.dataset.kind}"][data-id="${focused.dataset.id}"][data-field="${focused.dataset.field}"]`
       );
       if (next) {
-        next.focus();
+        focusInPlace(next);
         if (isAmountInput(next)) next.value = rawWhole(next.value) || next.value;
         try {
           const pos = Number(focused.selectionStart);
@@ -1693,10 +1779,7 @@
     markDirty();
     renderAll();
     const input = document.querySelector(`.entry-row[data-id="${id}"] [data-field="name"]`);
-    if (input) {
-      input.focus();
-      input.select();
-    }
+    focusInPlace(input, { select: true, reveal: true });
   }
 
   function removeRow(kind, id) {
@@ -2298,7 +2381,18 @@
         setDebtUnit(target.dataset.unit);
         break;
       case "add-month":
+        monthPickerOpen = false;
+        navOpen = false;
         addMonth();
+        break;
+      case "open-month-picker":
+        navOpen = false;
+        monthPickerOpen = true;
+        renderAll();
+        break;
+      case "close-month-picker":
+        monthPickerOpen = false;
+        renderAll();
         break;
       case "clear-deadline": {
         const goal = (state.goals || []).find((g) => String(g.id) === String(target.dataset.id));
@@ -2584,6 +2678,11 @@
 
   function onKey(event) {
     if (event.key === "Escape") {
+      if (monthPickerOpen) {
+        monthPickerOpen = false;
+        renderAll();
+        return;
+      }
       if (iconPicker) {
         closeIconPicker();
         return;
