@@ -197,14 +197,18 @@
   function withActiveData(store, data, now) {
     const active = getActive(store);
     if (!active) return store;
-    const changed = contentKey(active.data) !== contentKey(data);
+    // Store a snapshot, never the live state object: if the store and the
+    // screen shared one object, every later edit would already be "in" the
+    // store, so it would never look changed and never get a newer edit time.
+    const snapshot = data == null ? data : JSON.parse(JSON.stringify(data));
+    const changed = contentKey(active.data) !== contentKey(snapshot);
     const when = changed ? isoNow(now) : null;
     return {
       ...store,
       version: STORE_VERSION,
       profiles: store.profiles.map((profile) => {
         if (profile.id !== active.id) return profile;
-        return changed ? { ...profile, data, updatedAt: when } : { ...profile, data };
+        return changed ? { ...profile, data: snapshot, updatedAt: when } : { ...profile, data: snapshot };
       }),
     };
   }

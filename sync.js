@@ -111,9 +111,11 @@
   let again = false;
 
   async function syncOnce(session) {
-    const local = hooks.getStore ? hooks.getStore() : null;
     const cloud = await fetchCloud(session.user.id);
     if (isFirstSyncFor(session.user.id)) await backupIfNeeded();
+    // Read this device's copy only now, after the network wait, so edits made
+    // while the request was in flight are part of the merge.
+    const local = hooks.getStore ? hooks.getStore() : null;
     if (!cloud || cloud.data == null) {
       if (local) await upsertCloud(local.updatedAt ? local : Logic.stamp(local));
       return local;
@@ -127,8 +129,15 @@
       markSynced(session.user.id);
       pending = false;
     }
-    if ((result.localChanged || result.cloudChanged) && merged && hooks.setStore) {
-      await hooks.setStore(merged, merged.updatedAt, { fromCloud: true, silent: !result.localChanged });
+    if (result.localChanged && merged && hooks.setStore) {
+      // Something changed here while we were uploading: never apply a merge
+      // built from an older copy of this device. Run another round instead.
+      const now = hooks.getStore ? hooks.getStore() : null;
+      if (now !== local) {
+        again = true;
+        return merged;
+      }
+      await hooks.setStore(merged, merged.updatedAt, { fromCloud: true });
     }
     return merged;
   }
@@ -196,6 +205,11 @@
         (payload) => {
           const row = payload.new;
           if (!row || !user || row.user_id !== user.id) return;
+          if (syncing) {
+            // A sync round is running; it will pick this up.
+            again = true;
+            return;
+          }
           const local = hooks.getStore ? hooks.getStore() : null;
           const result = Logic.merge(local, row.data, row.updated_at);
           if (result.localChanged && result.store && hooks.setStore) {

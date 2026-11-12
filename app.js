@@ -54,6 +54,10 @@
     return Calc.formatMoney(n, state.currency);
   }
 
+  function cloneData(data) {
+    return data == null ? data : JSON.parse(JSON.stringify(data));
+  }
+
   function isPhone() {
     return window.matchMedia("(max-width: 720px)").matches;
   }
@@ -2124,7 +2128,7 @@
 
   function applyActiveProfile() {
     const profile = activeProfile();
-    state = Defaults.normalizeState(profile && profile.data);
+    state = Defaults.normalizeState(cloneData(profile && profile.data));
     Calc.roundAllAmounts(state);
     tipIndex = 0;
     modal = null;
@@ -2343,8 +2347,28 @@
     renderAll();
   }
 
+  // Never swap data in while someone is typing: wait until they leave the
+  // field, then fetch and merge again (their edit is saved first).
+  let remoteDeferred = false;
+  function isEditingField() {
+    const a = document.activeElement;
+    return !!(a && a.closest && a.closest("#app") && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
+  }
+  document.addEventListener("focusout", () => {
+    if (!remoteDeferred) return;
+    setTimeout(() => {
+      if (!remoteDeferred || isEditingField()) return;
+      remoteDeferred = false;
+      if (window.BudgetSync && window.BudgetSync.pull) window.BudgetSync.pull();
+    }, 400);
+  });
+
   async function applySyncedStore(next, updatedAt, opts) {
     if (opts && opts.fromCloud && (saveStatus === "unsaved" || saveStatus === "saving")) return;
+    if (opts && opts.fromCloud && isEditingField()) {
+      remoteDeferred = true;
+      return;
+    }
     applyingRemote = true;
     const raw = updatedAt ? { ...next, updatedAt } : next;
     const prevActiveId = store && store.activeProfileId;
@@ -2354,7 +2378,7 @@
     // Which budget, tab and month this device shows is local; sync never changes it.
     if (prevActiveId && store.profiles.some((p) => p.id === prevActiveId)) store.activeProfileId = prevActiveId;
     const profile = Profiles.getActive(store);
-    state = Defaults.normalizeState(profile && profile.data);
+    state = Defaults.normalizeState(cloneData(profile && profile.data));
     if (profile && profile.id === prevActiveId) {
       if (prevTab) state.activeTab = prevTab;
       if (prevMonth && state.months && state.months[prevMonth]) state.selectedMonth = prevMonth;
@@ -2812,7 +2836,7 @@
     if (stampedOnLoad) store = window.BudgetSyncLogic.stamp(store);
     const profile = Profiles.getActive(store);
     const before = profile && profile.data && profile.data.months ? Object.keys(profile.data.months) : [];
-    state = Defaults.normalizeState(profile && profile.data);
+    state = Defaults.normalizeState(cloneData(profile && profile.data));
     const roundedOnLoad = Calc.roundAllAmounts(state);
     const params = new URLSearchParams(window.location.search);
     if (params.get("tab") === "goals" || params.get("tab") === "loans" || params.get("tab") === "budget") {
