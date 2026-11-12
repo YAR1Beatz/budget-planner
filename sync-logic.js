@@ -60,5 +60,174 @@
     return { source: "local", reason: cloudTime === localTime ? "tie-keep-local" : "local-newer" };
   }
 
-  return { stamp, timeOf, substanceScore, choose };
+  function cleanName(name) {
+    return String(name || "").trim().replace(/\s+/g, " ").slice(0, 60);
+  }
+
+  function uidOf(profile) {
+    if (profile && typeof profile.uid === "string" && profile.uid) return profile.uid;
+    return "legacy:" + String(profile && profile.id) + ":" + cleanName(profile && profile.name).toLowerCase();
+  }
+
+  function stableStringify(value) {
+    if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+    if (value && typeof value === "object") {
+      return (
+        "{" +
+        Object.keys(value)
+          .sort()
+          .map((key) => JSON.stringify(key) + ":" + stableStringify(value[key]))
+          .join(",") +
+        "}"
+      );
+    }
+    return JSON.stringify(value === undefined ? null : value);
+  }
+
+  function hasAmount(row) {
+    return !!Number(String((row && row.amount) || "0").replace(",", "."));
+  }
+
+  // A profile nobody has typed into: no amounts, goals or loans.
+  function isBlankProfile(profile) {
+    const data = profile && profile.data;
+    if (!data) return true;
+    if (Array.isArray(data.goals) && data.goals.length) return false;
+    if (Array.isArray(data.loans) && data.loans.length) return false;
+    const months = data.months && typeof data.months === "object" ? data.months : {};
+    return !Object.keys(months).some((key) => {
+      const month = months[key] || {};
+      const rows = [].concat(month.income || [], month.expenses || []);
+      return rows.some(hasAmount);
+    });
+  }
+
+  // The untouched "My budget" a fresh install creates. Dropped when the other
+  // side has real budgets, so signing in on a new device does not add clutter.
+  function isFreshPlaceholder(store) {
+    const profiles = (store && Array.isArray(store.profiles) && store.profiles) || [];
+    return profiles.length === 1 && cleanName(profiles[0].name) === "My budget" && isBlankProfile(profiles[0]);
+  }
+
+  function profileTime(profile, store, fallback) {
+    return timeOf(profile && profile.updatedAt) || timeOf(store && store.updatedAt) || timeOf(fallback);
+  }
+
+  function signature(store, fallbackTime) {
+    const profiles = ((store && store.profiles) || []).map((p) => ({
+      uid: uidOf(p),
+      name: p.name,
+      at: profileTime(p, store, fallbackTime),
+      data: p.data,
+    }));
+    profiles.sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
+    const tombs = ((store && store.deletedProfiles) || []).map((t) => t.uid + "@" + t.at).sort();
+    return stableStringify({ profiles, tombs });
+  }
+
+  function nextId(used) {
+    let max = 0;
+    used.forEach((id) => {
+      const match = String(id).match(/^p(\d+)$/);
+      if (match) max = Math.max(max, Number(match[1]));
+    });
+    return "p" + (max + 1);
+  }
+
+  // Merge two stores budget by budget. Every budget on either side is kept;
+  // when both sides have the same budget the most recently edited copy wins.
+  // A budget is only removed when it was deleted after its last edit.
+  function merge(localStore, cloudStore, cloudUpdatedAt) {
+    const local = localStore && Array.isArray(localStore.profiles) ? localStore : null;
+    const cloud = cloudStore && Array.isArray(cloudStore.profiles) ? cloudStore : null;
+    if (!cloud) return { store: local, localChanged: false, cloudChanged: !!local, reason: "cloud-empty" };
+    if (!local) return { store: cloud, localChanged: true, cloudChanged: false, reason: "local-empty" };
+
+    const dropLocal = isFreshPlaceholder(local) && !isFreshPlaceholder(cloud);
+    const dropCloud = isFreshPlaceholder(cloud) && !isFreshPlaceholder(local);
+
+    const tombs = {};
+    [].concat(local.deletedProfiles || [], cloud.deletedProfiles || []).forEach((t) => {
+      if (!t || !t.uid) return;
+      if (!tombs[t.uid] || timeOf(t.at) > timeOf(tombs[t.uid])) tombs[t.uid] = t.at;
+    });
+
+    const cloudByUid = {};
+    (dropCloud ? [] : cloud.profiles).forEach((p) => {
+      cloudByUid[uidOf(p)] = p;
+    });
+
+    const out = [];
+    const used = new Set();
+    const seen = new Set();
+
+    function keep(profile, time) {
+      const uid = uidOf(profile);
+      if (tombs[uid] && timeOf(tombs[uid]) >= time) return;
+      let id = profile.id != null ? String(profile.id) : "";
+      if (!id || used.has(id)) id = nextId(used);
+      used.add(id);
+      const next = { ...profile, id, uid };
+      if (time) next.updatedAt = new Date(time).toISOString();
+      out.push(next);
+    }
+
+    (dropLocal ? [] : local.profiles).forEach((lp) => {
+      const uid = uidOf(lp);
+      seen.add(uid);
+      const cp = cloudByUid[uid];
+      const lt = profileTime(lp, local);
+      if (!cp) return keep(lp, lt);
+      const ct = profileTime(cp, cloud, cloudUpdatedAt);
+      let winner = lp;
+      let time = lt;
+      if (ct > lt) {
+        winner = { ...cp, id: lp.id };
+        time = ct;
+      } else if (ct === lt && stableStringify(cp.data) !== stableStringify(lp.data)) {
+        // Same timestamp, different content: pick deterministically so both devices agree.
+        const pickCloud = stableStringify([cp.name, cp.data]) > stableStringify([lp.name, lp.data]);
+        if (pickCloud) winner = { ...cp, id: lp.id };
+      }
+      keep(winner, time);
+    });
+
+    (dropCloud ? [] : cloud.profiles).forEach((cp) => {
+      const uid = uidOf(cp);
+      if (seen.has(uid)) return;
+      seen.add(uid);
+      keep(cp, profileTime(cp, cloud, cloudUpdatedAt));
+    });
+
+    if (!out.length) {
+      // Never end up with nothing: fall back to whichever side had budgets.
+      const fallback = local.profiles.length ? local : cloud;
+      return { store: fallback, localChanged: fallback !== local, cloudChanged: fallback !== cloud, reason: "empty-merge" };
+    }
+
+    const activeProfileId = out.some((p) => p.id === String(local.activeProfileId))
+      ? String(local.activeProfileId)
+      : out[0].id;
+    const latest = Math.max(timeOf(local.updatedAt), timeOf(cloud.updatedAt), timeOf(cloudUpdatedAt));
+    const merged = {
+      ...local,
+      version: Math.max(Number(local.version) || 2, Number(cloud.version) || 2),
+      profiles: out,
+      activeProfileId,
+    };
+    if (latest) merged.updatedAt = new Date(latest).toISOString();
+    const tombList = Object.keys(tombs).map((uid) => ({ uid, at: tombs[uid] }));
+    if (tombList.length) merged.deletedProfiles = tombList.slice(-50);
+    else delete merged.deletedProfiles;
+
+    const sig = signature(merged);
+    return {
+      store: merged,
+      localChanged: sig !== signature(local),
+      cloudChanged: sig !== signature(cloud, cloudUpdatedAt),
+      reason: "merged",
+    };
+  }
+
+  return { stamp, timeOf, substanceScore, choose, merge, uidOf, isBlankProfile, isFreshPlaceholder, signature };
 });

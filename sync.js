@@ -12,7 +12,6 @@
   let user = null;
   let lastError = null;
   let pending = false;
-  let pushing = false;
 
   function emit() {
     if (hooks.onChange) hooks.onChange(getStatus());
@@ -105,6 +104,35 @@
     return typeof navigator !== "undefined" && navigator.onLine === false;
   }
 
+  // Fetch the cloud copy, merge it budget by budget with this device's copy,
+  // apply the result here and upload it if the cloud is missing anything.
+  // Nothing is ever replaced wholesale, so no budget is dropped by syncing.
+  let syncing = null;
+  let again = false;
+
+  async function syncOnce(session) {
+    const local = hooks.getStore ? hooks.getStore() : null;
+    const cloud = await fetchCloud(session.user.id);
+    if (isFirstSyncFor(session.user.id)) await backupIfNeeded();
+    if (!cloud || cloud.data == null) {
+      if (local) await upsertCloud(local.updatedAt ? local : Logic.stamp(local));
+      return local;
+    }
+    const result = Logic.merge(local, cloud.data, cloud.updated_at);
+    let merged = result.store;
+    if (result.cloudChanged && merged) {
+      merged = Logic.stamp(merged);
+      await upsertCloud(merged);
+    } else {
+      markSynced(session.user.id);
+      pending = false;
+    }
+    if ((result.localChanged || result.cloudChanged) && merged && hooks.setStore) {
+      await hooks.setStore(merged, merged.updatedAt, { fromCloud: true, silent: !result.localChanged });
+    }
+    return merged;
+  }
+
   async function reconcile() {
     const session = await currentSession();
     if (!session) {
@@ -118,32 +146,30 @@
       setStatus("offline");
       return null;
     }
+    if (syncing) {
+      again = true;
+      return syncing;
+    }
     setStatus("syncing");
-    try {
-      const local = hooks.getStore ? hooks.getStore() : null;
-      const cloud = await fetchCloud(session.user.id);
-      const firstSync = isFirstSyncFor(session.user.id);
-      if (firstSync) await backupIfNeeded();
-      const decision = Logic.choose(local, cloud, { firstSync });
-      if (decision.source === "cloud") {
-        if (hooks.setStore) await hooks.setStore(cloud.data, cloud.updated_at, { fromCloud: true });
-        markSynced(session.user.id);
+    syncing = (async () => {
+      let out = null;
+      try {
+        do {
+          again = false;
+          out = await syncOnce(session);
+        } while (again);
         setStatus("synced");
-        return cloud.data;
+      } catch (err) {
+        pending = true;
+        setStatus(isOffline() ? "offline" : "error", err);
+        out = null;
       }
-      if (local) {
-        const stamped = local.updatedAt ? local : Logic.stamp(local);
-        if (!local.updatedAt && hooks.setStore) {
-          await hooks.setStore(stamped, stamped.updatedAt, { fromCloud: false, silent: true });
-        }
-        await upsertCloud(stamped);
-      }
-      setStatus("synced");
-      return local;
-    } catch (err) {
-      pending = true;
-      setStatus(isOffline() ? "offline" : "error", err);
-      return null;
+      return out;
+    })();
+    try {
+      return await syncing;
+    } finally {
+      syncing = null;
     }
   }
 
@@ -151,23 +177,12 @@
     const session = await currentSession();
     if (!session || !store) return { ok: false, reason: session ? "empty" : "signed-out" };
     pending = true;
-    if (pushing) return { ok: true, deferred: true };
-    pushing = true;
-    try {
-      if (isOffline()) {
-        setStatus("offline");
-        return { ok: false, reason: "offline" };
-      }
-      setStatus("syncing");
-      await upsertCloud(store);
-      setStatus("synced");
-      return { ok: true };
-    } catch (err) {
-      setStatus(isOffline() ? "offline" : "error", err);
-      return { ok: false, error: err };
-    } finally {
-      pushing = false;
+    if (isOffline()) {
+      setStatus("offline");
+      return { ok: false, reason: "offline" };
     }
+    const out = await reconcile();
+    return out ? { ok: true } : { ok: false, reason: status };
   }
 
   function subscribeRealtime() {
@@ -182,11 +197,12 @@
           const row = payload.new;
           if (!row || !user || row.user_id !== user.id) return;
           const local = hooks.getStore ? hooks.getStore() : null;
-          const decision = Logic.choose(local, { data: row.data, updated_at: row.updated_at }, { firstSync: false });
-          if (decision.source === "cloud" && hooks.setStore) {
-            hooks.setStore(row.data, row.updated_at, { fromCloud: true });
+          const result = Logic.merge(local, row.data, row.updated_at);
+          if (result.localChanged && result.store && hooks.setStore) {
+            hooks.setStore(result.store, result.store.updatedAt, { fromCloud: true });
           }
-          setStatus("synced");
+          if (result.cloudChanged) reconcile();
+          else setStatus("synced");
         }
       )
       .subscribe();

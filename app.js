@@ -100,7 +100,6 @@
   }
 
   function decorateAmountInputs() {
-    if (!isPhone()) return;
     document.querySelectorAll("input").forEach((el) => {
       if (!isAmountInput(el)) return;
       if (el === document.activeElement) {
@@ -272,7 +271,29 @@
     return `<select class="${cls}" data-action="theme" aria-label="Design">${themeOptions}</select>`;
   }
 
+  function renderThemeSegment() {
+    const current = resolvedTheme();
+    const opts = [
+      ["light", "Warm"],
+      ["dark", "Dark"],
+      ["bright", "Bright"],
+    ];
+    return [
+      '<div class="theme-seg" role="group" aria-label="Design">',
+      opts
+        .map(
+          ([value, label]) =>
+            `<button type="button" class="theme-seg-btn${value === current ? " is-on" : ""}" data-action="set-theme" data-theme="${value}" aria-pressed="${
+              value === current
+            }" title="${label}"><span class="theme-seg-dot theme-dot-${value}" aria-hidden="true"></span><span class="theme-seg-label">${label}</span></button>`
+        )
+        .join(""),
+      "</div>",
+    ].join("");
+  }
+
   function renderTitlebar() {
+    const TAB_ICONS = { budget: WS_ICON_BUDGET, goals: WS_ICON_GOALS, loans: WS_ICON_LOANS };
     const tabs = [
       { id: "budget", label: "Budget" },
       { id: "goals", label: "Goals" },
@@ -291,12 +312,12 @@
           (tab) =>
             `<button class="tab" type="button" data-action="tab" data-tab="${tab.id}" aria-selected="${
               state.activeTab === tab.id
-            }">${tab.label}</button>`
+            }"><span class="tab-ico" aria-hidden="true">${TAB_ICONS[tab.id] || ""}</span>${tab.label}</button>`
         )
         .join(""),
       "  </nav>",
       '  <div class="titlebar-actions">',
-      renderThemeSelect(),
+      renderThemeSegment(),
       `    <button class="btn save-chip" type="button" data-action="save" data-status="${saveStatus}">${saveLabel()}</button>`,
       renderSyncChip("titlebar"),
       "  </div>",
@@ -371,9 +392,9 @@
       [/util|electric|power|water|internet|energy|el |varme/, "💡"],
       [/transport|transit|bus|train|fuel|petrol|gas|ticket|car fare/, "🚌"],
       [/subscr|stream|netflix|spotify|apple|tv/, "🎬"],
-      [/leisure|fritid|fun|hobby|entertainment|other/, "🎲"],
-      [/travel|ferie|holiday|trip|vacation/, "✈️"],
       [/emerg|rainy|buffer|safety/, "☂️"],
+      [/leisure|fritid|\bfun\b|hobby|entertainment|other/, "🎲"],
+      [/travel|ferie|holiday|trip|vacation/, "✈️"],
       [/loan|debt|payoff/, "🏦"],
       [/insur|forsikr/, "📄"],
       [/health|doctor|medic|apotek|dental/, "💊"],
@@ -496,6 +517,7 @@
       '  <div class="ws-split">',
       `    <div class="ws-cell"><div class="ws-lbl">Total debt</div><div class="ws-val">${escapeHtml(money(debt))}</div></div>`,
       `    <div class="ws-cell"><div class="ws-lbl">Monthly payoff</div><div class="ws-val out">${escapeHtml(money(loanMonthlyTotal()))}</div></div>`,
+      `    <div class="ws-cell ws-desk-only"><div class="ws-lbl">Original balances</div><div class="ws-val">${escapeHtml(money(starting))}</div></div>`,
       "  </div>",
       starting > 0
         ? `  <div class="ws-loan-paid"><span>Paid off so far</span><strong>${escapeHtml(money(paid))}</strong><span class="ws-loan-pct">${paidPct}%</span></div><div class="progress-track ws-hero-track"><div class="progress-fill" style="width:${paidPct}%;background:${progressColour(paidPct)}"></div></div>`
@@ -654,6 +676,7 @@
       '<div class="profile-switcher">',
       '  <button class="profile-switcher-btn" type="button" data-action="toggle-profiles" aria-haspopup="menu"',
       `   aria-expanded="${profileMenuOpen ? "true" : "false"}">`,
+      `    <span class="ws-side-avatar ws-desk-only" aria-hidden="true">${escapeHtml(String(name).trim().charAt(0).toUpperCase() || "M")}</span>`,
       `    <span class="profile-switcher-label">${escapeHtml(name)}</span>`,
       '    <span class="profile-caret" aria-hidden="true">▾</span>',
       "  </button>",
@@ -994,7 +1017,7 @@
     return [
       '<div class="page-head">',
       "  <div>",
-      '    <p class="page-kicker">Monthly budget</p>',
+      `    <p class="page-kicker ws-greet">Hi ${escapeHtml(profileName())}</p>`,
       `    <h1 class="page-title">${escapeHtml(Calc.monthTitle(state.selectedMonth))}</h1>`,
       "  </div>",
       '  <div class="page-head-right">',
@@ -1129,10 +1152,13 @@
     return [
       '<div class="page-head">',
       "  <div>",
-      '    <p class="page-kicker">Savings</p>',
-      '    <h1 class="page-title">Savings goals</h1>',
+      `    <p class="page-kicker ws-greet">Hi ${escapeHtml(profileName())}</p>`,
+      '    <h1 class="page-title">Your goals</h1>',
       "  </div>",
+      '  <div class="ws-head-actions">',
       currencySelect(),
+      '    <button class="ws-add ws-desk-only" type="button" data-action="scroll-add">+ Add goal</button>',
+      "  </div>",
       "</div>",
       '<p class="lede">Set a target, keep track of how much you have already saved, and log contributions along the way.</p>',
       '<section class="card" id="add-goal">',
@@ -1198,6 +1224,9 @@
       featured
         ? `<div class="ws-goal-hero">${largeGoalRing(progress)}<div class="ws-goal-saved"><div class="ws-goal-saved-amt">${escapeHtml(money(saved))}</div><div class="ws-goal-saved-of">of ${escapeHtml(money(target))}</div></div></div>`
         : "",
+      featured
+        ? ""
+        : `<div class="ws-desk-progress ws-desk-only"><div class="progress-label"><span>Progress</span><span>${progress}%</span></div><div class="progress-track"><div class="progress-fill goal" style="width:${progress}%;background:${progressColour(progress)}"></div></div></div>`,
       goal.deadline ? `  <div class="deadline-note">${deadlineNote(goal, saved, target)}</div>` : "",
       `  <div class="ws-edit-block${editingCards.has("goal:" + goal.id) ? " is-open" : ""}">`,
       '  <div class="goal-amounts">',
@@ -1256,10 +1285,13 @@
     return [
       '<div class="page-head">',
       "  <div>",
-      '    <p class="page-kicker">Payoff progress</p>',
+      `    <p class="page-kicker ws-greet">Hi ${escapeHtml(profileName())}</p>`,
       '    <h1 class="page-title">Loans</h1>',
       "  </div>",
+      '  <div class="ws-head-actions">',
       currencySelect(),
+      '    <button class="ws-add ws-desk-only" type="button" data-action="scroll-add">+ Add loan</button>',
+      "  </div>",
       "</div>",
       renderLoanHero(loans, debt, starting, paid, paidPct),
       '<p class="lede">Add each loan, log what you pay, and see how much is left, how far you have come, and when you should be free of it.</p>',
@@ -2254,6 +2286,11 @@
       case "toggle-theme":
         toggleTheme();
         break;
+      case "set-theme":
+        state.theme = target.dataset.theme;
+        markDirty();
+        renderAll();
+        break;
       case "select-month":
         selectMonth(target.dataset.month);
         break;
@@ -2415,7 +2452,7 @@
 
   function onAmountFocus(event) {
     const el = event.target;
-    if (!isPhone() || !isAmountInput(el) || el.readOnly) return;
+    if (!isAmountInput(el) || el.readOnly) return;
     const raw = rawWhole(el.value);
     if (raw !== "" || el.value) el.value = raw;
     try { el.select(); } catch (err) {}
@@ -2423,7 +2460,7 @@
 
   function onAmountBlur(event) {
     const el = event.target;
-    if (!isPhone() || !isAmountInput(el) || el.readOnly) return;
+    if (!isAmountInput(el) || el.readOnly) return;
     const raw = rawWhole(el.value);
     if (el.dataset && el.dataset.field === "amount" && el.dataset.kind && el.dataset.id) {
       updateRow(el.dataset.kind, el.dataset.id, "amount", raw === "" ? "0" : raw);
