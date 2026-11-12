@@ -28,6 +28,9 @@
   let profileMenuOpen = false;
   let saveStatus = "saved";
   let saveTimer = null;
+  let syncTimer = null;
+  let summaryRaf = null;
+  let chartsTimer = null;
   let modal = null;
   let toastTimer = null;
   let mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -160,8 +163,10 @@
     return index > 0 ? keys[index - 1] : null;
   }
 
-  function markDirty() {
-    if (state) Calc.roundAllAmounts(state);
+  function markDirty(opts) {
+    // Rounding the whole budget on every keystroke is wasted work and can
+    // fight with the value still being typed.
+    if (state && !(opts && opts.typing)) Calc.roundAllAmounts(state);
     saveStatus = "unsaved";
     refreshSaveChip();
     scheduleSave();
@@ -169,11 +174,24 @@
 
   function scheduleSave() {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => saveNow(), 500);
+    saveTimer = setTimeout(() => saveNow({ push: false }), 400);
+    scheduleSyncPush();
   }
 
-  async function saveNow() {
+  function scheduleSyncPush() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => saveNow({ push: true }), 1500);
+  }
+
+  function flushPersistence() {
+    return saveNow({ push: true });
+  }
+
+  async function saveNow(opts) {
+    const shouldPush = !opts || opts.push !== false;
     clearTimeout(saveTimer);
+    if (shouldPush) clearTimeout(syncTimer);
+    if (state) Calc.roundAllAmounts(state);
     saveStatus = "saving";
     refreshSaveChip();
     try {
@@ -181,7 +199,7 @@
       if (!applyingRemote && window.BudgetSyncLogic) store = window.BudgetSyncLogic.stamp(store);
       await storage.save(store || state);
       saveStatus = "saved";
-      if (!applyingRemote && window.BudgetSync) window.BudgetSync.push(store || state);
+      if (shouldPush && !applyingRemote && window.BudgetSync) window.BudgetSync.push(store || state);
     } catch (err) {
       saveStatus = "unsaved";
       showToast("Could not save. Please try again.");
@@ -1092,13 +1110,6 @@
     const { month, incomeTotal, expenseTotal, remaining, loanPayoff } = totals();
     const prev = previousMonthKey();
     const shortfall = remaining < 0;
-    const hasAmounts = incomeTotal > 0 || expenseTotal > 0;
-    const share =
-      incomeTotal > 0 ? `${Math.round((expenseTotal / incomeTotal) * 100)}% of your income is allocated to expenses.` : "";
-    const bars = Calc.expenseBars(
-      loanPayoff > 0 ? month.expenses.concat([{ name: "Loans (monthly payoff)", amount: String(loanPayoff) }]) : month.expenses,
-      state.currency
-    );
 
     return [
       '<div class="page-head">',
@@ -1134,30 +1145,46 @@
       entryCard("Income", "income", month.income, "Add income"),
       entryCard("Expenses", "expense", month.expenses, "Add expense", "Add as many expense categories as you need."),
       "</div>",
-      hasAmounts
-        ? [
-            '<div class="grid-2">',
-            '  <section class="card">',
-            '    <h2 class="card-title">Income &amp; spending</h2>',
-            Charts.columnChart(incomeTotal, expenseTotal, money),
-            share ? `<p class="chart-note">${escapeHtml(share)}</p>` : "",
-            "  </section>",
-            '  <section class="card">',
-            '    <h2 class="card-title">Where your money goes</h2>',
-            bars.length ? Charts.horizontalBars(bars) : '<p class="empty">Add some expenses to see the breakdown.</p>',
-            '    <div class="props">',
-            `      <div class="prop"><span class="prop-label">Total expenses</span><span class="prop-value soft-red">−${escapeHtml(
-              money(expenseTotal)
-            )}</span></div>`,
-            `      <div class="prop"><span class="prop-label">Left over</span><span class="prop-value ${
-              shortfall ? "soft-red" : "soft-green"
-            }">${escapeHtml(money(remaining))}${shortfall ? " · Shortfall" : ""}</span></div>`,
-            "    </div>",
-            '    <p class="chart-note" style="text-align:left">Total income minus total expenses.</p>',
-            "  </section>",
-            "</div>",
-          ].join("")
-        : '<p class="empty">Enter income and expenses to see your totals and charts.</p>',
+      renderChartsSection(incomeTotal, expenseTotal, remaining, month, loanPayoff),
+    ].join("");
+  }
+
+  function renderChartsSection(incomeTotal, expenseTotal, remaining, month, loanPayoff) {
+    const shortfall = remaining < 0;
+    const hasAmounts = incomeTotal > 0 || expenseTotal > 0;
+    const share =
+      incomeTotal > 0 ? `${Math.round((expenseTotal / incomeTotal) * 100)}% of your income is allocated to expenses.` : "";
+    const bars = Calc.expenseBars(
+      loanPayoff > 0 ? month.expenses.concat([{ name: "Loans (monthly payoff)", amount: String(loanPayoff) }]) : month.expenses,
+      state.currency
+    );
+    // Keep this a direct child of .main-inner (a .grid-2 or .empty) so existing
+    // phone layout order rules still apply. The extra wrapper was putting the
+    // charts above the expense list on a narrow screen.
+    if (!hasAmounts) {
+      return '<p class="empty budget-charts">Enter income and expenses to see your totals and charts.</p>';
+    }
+    return [
+      '<div class="grid-2 budget-charts">',
+      '  <section class="card">',
+      '    <h2 class="card-title">Income &amp; spending</h2>',
+      Charts.columnChart(incomeTotal, expenseTotal, money),
+      share ? `<p class="chart-note">${escapeHtml(share)}</p>` : "",
+      "  </section>",
+      '  <section class="card">',
+      '    <h2 class="card-title">Where your money goes</h2>',
+      bars.length ? Charts.horizontalBars(bars) : '<p class="empty">Add some expenses to see the breakdown.</p>',
+      '    <div class="props">',
+      `      <div class="prop"><span class="prop-label">Total expenses</span><span class="prop-value soft-red">−${escapeHtml(
+        money(expenseTotal)
+      )}</span></div>`,
+      `      <div class="prop"><span class="prop-label">Left over</span><span class="prop-value ${
+        shortfall ? "soft-red" : "soft-green"
+      }">${escapeHtml(money(remaining))}${shortfall ? " · Shortfall" : ""}</span></div>`,
+      "    </div>",
+      '    <p class="chart-note" style="text-align:left">Total income minus total expenses.</p>',
+      "  </section>",
+      "</div>",
     ].join("");
   }
 
@@ -1736,35 +1763,67 @@
     ].join("");
   }
 
-  function refreshBudgetSummaries() {
+  function scheduleSummaryRefresh() {
+    if (!summaryRaf) {
+      summaryRaf = requestAnimationFrame(() => {
+        summaryRaf = null;
+        refreshLiveSummaries({ charts: false });
+      });
+    }
+    clearTimeout(chartsTimer);
+    chartsTimer = setTimeout(() => refreshLiveSummaries({ charts: true }), 150);
+  }
+
+  // Update totals, charts and the tip without replacing the row being typed in.
+  // Rebuilding the whole budget on each keystroke was what made the phone lag.
+  function refreshLiveSummaries(opts) {
     if (state.activeTab !== "budget") return;
     const main = document.querySelector(".main-inner");
     if (!main) return;
-    const focused = document.activeElement;
-    const focusKey =
-      focused && focused.dataset
-        ? `${focused.dataset.kind || ""}:${focused.dataset.id || ""}:${focused.dataset.field || ""}:${focused.selectionStart || ""}`
-        : null;
-    const scroll = document.querySelector(".main").scrollTop;
-    main.innerHTML = renderBudget();
-    document.querySelector(".main").scrollTop = scroll;
-    refreshSidebarDots();
-    if (focusKey && focused && focused.dataset) {
-      const next = document.querySelector(
-        `[data-kind="${focused.dataset.kind}"][data-id="${focused.dataset.id}"][data-field="${focused.dataset.field}"]`
-      );
-      if (next) {
-        focusInPlace(next);
-        if (isAmountInput(next)) next.value = rawWhole(next.value) || next.value;
-        try {
-          const pos = Number(focused.selectionStart);
-          if (Number.isFinite(pos)) next.setSelectionRange(pos, pos);
-        } catch (err) {
-          /* ignore */
-        }
-      }
+    const { month, incomeTotal, expenseTotal, remaining, loanPayoff } = totals();
+    const shortfall = remaining < 0;
+    const withCharts = !opts || opts.charts !== false;
+
+    const kicker = main.querySelector(".ws-hero-kicker");
+    if (kicker) kicker.textContent = shortfall ? "Shortfall" : "Remaining";
+    const heroVal = main.querySelector(".ws-hero-value");
+    if (heroVal) {
+      heroVal.textContent = money(Math.abs(remaining));
+      heroVal.classList.toggle("is-short", shortfall);
     }
-    decorateAmountInputs();
+    const inVal = main.querySelector(".ws-hero .ws-val.in");
+    if (inVal) inVal.textContent = money(incomeTotal);
+    const outVal = main.querySelector(".ws-hero .ws-val.out");
+    if (outVal) outVal.textContent = "−" + money(expenseTotal);
+
+    const metrics = main.querySelectorAll(".metrics .metric");
+    if (metrics[0]) {
+      const v = metrics[0].querySelector(".metric-value");
+      if (v) v.textContent = money(incomeTotal);
+    }
+    if (metrics[1]) {
+      const v = metrics[1].querySelector(".metric-value");
+      if (v) v.textContent = money(expenseTotal);
+    }
+    if (metrics[2]) {
+      const label = metrics[2].querySelector(".metric-label");
+      if (label) label.textContent = shortfall ? "Shortfall" : "Remaining";
+      const v = metrics[2].querySelector(".metric-value");
+      if (v) {
+        v.textContent = money(Math.abs(remaining));
+        v.classList.toggle("soft-red", shortfall);
+      }
+      const detail = metrics[2].querySelector(".metric-detail");
+      if (detail) detail.textContent = shortfall ? "Expenses exceed income" : "Income minus expenses";
+    }
+
+    if (withCharts) {
+      clearTimeout(chartsTimer);
+      const charts = main.querySelector(".budget-charts");
+      if (charts) charts.outerHTML = renderChartsSection(incomeTotal, expenseTotal, remaining, month, loanPayoff);
+      refreshTipBox();
+      refreshSidebarDots();
+    }
   }
 
   function refreshSidebarDots() {
@@ -1967,9 +2026,10 @@
   function updateRow(kind, id, field, value) {
     const row = monthRows(kind).find((r) => String(r.id) === String(id));
     if (!row) return;
+    if (row[field] === value) return;
     row[field] = value;
-    markDirty();
-    if (field === "amount" || field === "name") refreshBudgetSummaries();
+    markDirty({ typing: true });
+    if (field === "amount" || field === "name") scheduleSummaryRefresh();
   }
 
   function addMonth() {
@@ -2356,9 +2416,10 @@
     return !!(a && a.closest && a.closest("#app") && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName));
   }
   document.addEventListener("focusout", () => {
-    if (!remoteDeferred) return;
     setTimeout(() => {
-      if (!remoteDeferred || isEditingField()) return;
+      if (isEditingField()) return;
+      if (saveStatus === "unsaved" || saveTimer || syncTimer) flushPersistence();
+      if (!remoteDeferred) return;
       remoteDeferred = false;
       if (window.BudgetSync && window.BudgetSync.pull) window.BudgetSync.pull();
     }, 400);
@@ -2668,7 +2729,11 @@
     if (!isAmountInput(el) || el.readOnly) return;
     const raw = rawWhole(el.value);
     if (el.dataset && el.dataset.field === "amount" && el.dataset.kind && el.dataset.id) {
-      updateRow(el.dataset.kind, el.dataset.id, "amount", raw === "" ? "0" : raw);
+      const stored = raw === "" ? "0" : raw;
+      updateRow(el.dataset.kind, el.dataset.id, "amount", stored);
+      el.value = formatWhole(stored);
+      refreshLiveSummaries({ charts: true });
+      flushPersistence();
       return;
     }
     if (el.dataset && (el.dataset.gfield || el.dataset.lfield)) {
@@ -2754,7 +2819,6 @@
     }
     if (el.dataset && el.dataset.field === "amount" && el.dataset.kind && el.dataset.id) {
       const w = rawWhole(el.value);
-      if (w !== "") el.value = w;
       updateRow(el.dataset.kind, el.dataset.id, "amount", w === "" ? "0" : w);
       return;
     }
@@ -2878,6 +2942,13 @@
     document.addEventListener("pointerup", onHandlePointerUp);
     document.addEventListener("pointercancel", onHandlePointerCancel);
     document.addEventListener("keydown", onKey);
+    const flushIfHidden = () => {
+      if (saveStatus === "unsaved" || saveTimer || syncTimer) flushPersistence();
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") flushIfHidden();
+    });
+    window.addEventListener("pagehide", flushIfHidden);
     renderAll();
     if (window.BudgetSync) {
       window.BudgetSync.init({
@@ -2906,6 +2977,7 @@
     if (!raw || opened.migrated || opened.created || created || roundedOnLoad || stampedOnLoad) await saveNow();
     window.__budgetReady = true;
     window.__setTab = setTab;
+    window.__flushSave = flushPersistence;
     // Test hook: apply a cloud copy exactly like a realtime sync update would.
     window.__simulateRemote = (cloudStore, cloudUpdatedAt) => {
       const result = window.BudgetSyncLogic.merge(store, cloudStore, cloudUpdatedAt);
