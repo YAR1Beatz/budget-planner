@@ -3921,3 +3921,50 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
   .month-pick-check { font-weight: 800; }
   .month-pick-add { width: 100%; min-height: 46px; }
 }
+
+/* Loan card stats (v13): Remaining is the headline, Monthly next to it,
+   the rate as a small tile. Starting balance lives in the grey meta line. */
+.loan-card .loan-stats.loan-stats-v13 {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) auto;
+  gap: 8px;
+  margin: 12px 0 8px;
+}
+.loan-card .loan-stats-v13 > .loan-stat {
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 0;
+  box-shadow: none;
+  background: color-mix(in srgb, var(--ws-text, var(--text)) 4.5%, transparent);
+}
+.loan-card .loan-stats-v13 .stat-label {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--ws-muted, var(--text-muted));
+  white-space: nowrap;
+}
+.loan-card .loan-stats-v13 .stat-value {
+  display: block;
+  margin-top: 2px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  transform: none;
+}
+.loan-card .loan-stats-v13 .stat-value:hover { transform: none; }
+.loan-card .loan-stats-v13 .loan-stat-main .stat-value { font-size: 22px; font-weight: 780; letter-spacing: -0.4px; }
+.loan-card .loan-stats-v13 .loan-stat-rate { padding: 10px 10px; text-align: center; }
+.loan-card .loan-stats-v13 .loan-stat-rate .stat-value { font-size: 14px; font-weight: 650; color: var(--ws-muted, var(--text-muted)); }
+.loan-card .payoff-line { margin-top: 4px; }
+
+@media (max-width: 720px) {
+  .loan-card .loan-stats.loan-stats-v13 { gap: 6px; margin: 10px 0 6px; }
+  .loan-card .loan-stats-v13 > .loan-stat { padding: 9px 10px; }
+  .loan-card .loan-stats-v13 .loan-stat-main .stat-value { font-size: 20px; }
+  .loan-card .loan-stats-v13 .stat-value { font-size: 15.5px; }
+  .loan-card .loan-stats-v13 .loan-stat-rate { padding: 9px 8px; }
+  .loan-card .loan-stats-v13 .loan-stat-rate .stat-value { font-size: 13.5px; }
+}
