@@ -2347,9 +2347,19 @@
     if (opts && opts.fromCloud && (saveStatus === "unsaved" || saveStatus === "saving")) return;
     applyingRemote = true;
     const raw = updatedAt ? { ...next, updatedAt } : next;
+    const prevActiveId = store && store.activeProfileId;
+    const prevTab = state && state.activeTab;
+    const prevMonth = state && state.selectedMonth;
     store = Profiles.normalizeStore(raw);
+    // Which budget, tab and month this device shows is local; sync never changes it.
+    if (prevActiveId && store.profiles.some((p) => p.id === prevActiveId)) store.activeProfileId = prevActiveId;
     const profile = Profiles.getActive(store);
     state = Defaults.normalizeState(profile && profile.data);
+    if (profile && profile.id === prevActiveId) {
+      if (prevTab) state.activeTab = prevTab;
+      if (prevMonth && state.months && state.months[prevMonth]) state.selectedMonth = prevMonth;
+    }
+    store = Profiles.withActiveData(store, state);
     if (!opts || !opts.silent) {
       navOpen = false;
       profileMenuOpen = false;
@@ -2863,6 +2873,12 @@
     if (!raw || opened.migrated || opened.created || created || roundedOnLoad || stampedOnLoad) await saveNow();
     window.__budgetReady = true;
     window.__setTab = setTab;
+    // Test hook: apply a cloud copy exactly like a realtime sync update would.
+    window.__simulateRemote = (cloudStore, cloudUpdatedAt) => {
+      const result = window.BudgetSyncLogic.merge(store, cloudStore, cloudUpdatedAt);
+      if (result.localChanged && result.store) return applySyncedStore(result.store, result.store.updatedAt, { fromCloud: true });
+      return Promise.resolve();
+    };
     if (typeof window.__onBudgetReady === "function") window.__onBudgetReady();
   }
 

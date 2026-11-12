@@ -84,6 +84,28 @@
     return JSON.stringify(value === undefined ? null : value);
   }
 
+  // Per-device view state. Never synced between devices and never used to
+  // decide which copy of a budget is newer.
+  const UI_FIELDS = ["activeTab", "selectedMonth"];
+
+  function withoutUi(data) {
+    if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+    const copy = {};
+    Object.keys(data).forEach((key) => {
+      if (UI_FIELDS.indexOf(key) === -1) copy[key] = data[key];
+    });
+    return copy;
+  }
+
+  function keepLocalUi(winnerData, localData) {
+    if (!winnerData || !localData) return winnerData;
+    const out = { ...winnerData };
+    if (localData.activeTab) out.activeTab = localData.activeTab;
+    const months = out.months && typeof out.months === "object" ? out.months : {};
+    if (localData.selectedMonth && months[localData.selectedMonth]) out.selectedMonth = localData.selectedMonth;
+    return out;
+  }
+
   function hasAmount(row) {
     return !!Number(String((row && row.amount) || "0").replace(",", "."));
   }
@@ -118,7 +140,7 @@
       uid: uidOf(p),
       name: p.name,
       at: profileTime(p, store, fallbackTime),
-      data: p.data,
+      data: withoutUi(p.data),
     }));
     profiles.sort((a, b) => (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
     const tombs = ((store && store.deletedProfiles) || []).map((t) => t.uid + "@" + t.at).sort();
@@ -181,14 +203,21 @@
       const ct = profileTime(cp, cloud, cloudUpdatedAt);
       let winner = lp;
       let time = lt;
-      if (ct > lt) {
-        winner = { ...cp, id: lp.id };
-        time = ct;
-      } else if (ct === lt && stableStringify(cp.data) !== stableStringify(lp.data)) {
-        // Same timestamp, different content: pick deterministically so both devices agree.
-        const pickCloud = stableStringify([cp.name, cp.data]) > stableStringify([lp.name, lp.data]);
-        if (pickCloud) winner = { ...cp, id: lp.id };
+      const cloudContent = stableStringify([cp.name, withoutUi(cp.data)]);
+      const localContent = stableStringify([lp.name, withoutUi(lp.data)]);
+      if (cloudContent !== localContent) {
+        if (ct > lt) {
+          winner = { ...cp, id: lp.id };
+          time = ct;
+        } else if (ct === lt && cloudContent > localContent) {
+          // Same timestamp, different content: pick deterministically so both devices agree.
+          winner = { ...cp, id: lp.id };
+        }
+      } else {
+        time = Math.max(lt, ct);
       }
+      // The tab and month this device is looking at always stay this device's.
+      winner = { ...winner, data: keepLocalUi(winner.data, lp.data) };
       keep(winner, time);
     });
 
@@ -229,5 +258,5 @@
     };
   }
 
-  return { stamp, timeOf, substanceScore, choose, merge, uidOf, isBlankProfile, isFreshPlaceholder, signature };
+  return { UI_FIELDS, withoutUi, stamp, timeOf, substanceScore, choose, merge, uidOf, isBlankProfile, isFreshPlaceholder, signature };
 });
