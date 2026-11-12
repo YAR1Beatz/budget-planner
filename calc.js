@@ -613,6 +613,28 @@
     return roundMoney((loans || []).reduce((sum, loan) => sum + parseMoney(loan && loan.startingBalance), 0));
   }
 
+
+  function loanMonthlyTotal(loans) {
+    return Math.round(
+      (loans || [])
+        .filter((loan) => currentLoanBalance(loan) > 0)
+        .reduce((sum, loan) => sum + parseMoney(loan && loan.monthlyPayment), 0)
+    );
+  }
+
+  /** Default on: only an explicit false excludes this month's loan payoff from expenses. */
+  function isLoanPayoffIncluded(month) {
+    return !month || month.includeLoanPayoff !== false;
+  }
+
+  function includedLoanPayoff(month, loans) {
+    return isLoanPayoffIncluded(month) ? loanMonthlyTotal(loans) : 0;
+  }
+
+  function monthExpenseTotal(month, loans) {
+    return roundMoney(sumAmounts(month && month.expenses) + includedLoanPayoff(month, loans));
+  }
+
   return {
     roundMoney,
     parseAmount,
@@ -651,5 +673,9 @@
     formatDisplayDate,
     totalDebt,
     totalStartingDebt,
+    loanMonthlyTotal,
+    isLoanPayoffIncluded,
+    includedLoanPayoff,
+    monthExpenseTotal,
   };
 });

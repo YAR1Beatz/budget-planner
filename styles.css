@@ -857,6 +857,56 @@ body.is-mac .titlebar {
 .entry-row-auto .input { opacity: 0.85; cursor: default; }
 .auto-tag { font-size: 11px; font-weight: 600; color: var(--text-muted); text-align: center; }
 
+.loan-toggle {
+  position: relative;
+  box-sizing: border-box;
+  width: 40px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--border);
+  cursor: pointer;
+  flex-shrink: 0;
+  justify-self: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.loan-toggle[aria-checked="true"] {
+  background: var(--green, #3A9B6E);
+}
+.loan-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
+  transition: transform 0.15s ease;
+  pointer-events: none;
+}
+.loan-toggle[aria-checked="true"] .loan-toggle-knob {
+  transform: translateX(16px);
+}
+.entry-row-auto.is-off .input {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.entry-row-auto.is-off .ws-emoji {
+  opacity: 0.45;
+}
+.loan-auto-name {
+  grid-area: name;
+  min-width: 0;
+  display: block;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  cursor: default;
+  line-height: 18px;
+}
+
 .drag-handle {
   cursor: grab;
   color: var(--text-muted);
@@ -2097,7 +2147,8 @@ body.is-row-dragging .main {
   .entry-row .drag-handle { grid-area: drag; }
   .entry-row .ws-emoji { grid-area: emoji; align-self: center; margin-top: 0; }
   .entry-row input[data-field="name"],
-  .entry-row-auto input[readonly]:not(.amt-input) { grid-area: name; min-width: 0; }
+  .entry-row-auto input[readonly]:not(.amt-input),
+  .entry-row-auto .loan-auto-name { grid-area: name; min-width: 0; }
   /* name is the first non-amount text input */
   .entry-row > input.input:not(.amt-input) { grid-area: name; min-width: 0; }
   .entry-row input.amt-input,
@@ -2119,6 +2170,13 @@ body.is-row-dragging .main {
   .entry-row .btn-icon { width: 40px; height: 40px; }
   .entry-row .btn-icon { grid-area: x; }
   .entry-row-auto .auto-tag { grid-area: x; }
+
+  .entry-row-auto {
+    grid-template-columns: 14px 34px minmax(0, 1fr) 74px 40px;
+  }
+  .loan-toggle { background: var(--ws-track, var(--border)); }
+  .loan-toggle[aria-checked="true"] { background: var(--ws-green, #3A9B6E); }
+  .entry-row-auto .loan-toggle { grid-area: x; }
   .ws-emoji,
   .ws-emoji-badge {
     display: grid;
@@ -3080,6 +3138,7 @@ body.is-row-dragging .main {
   .row-list { gap: 2px; }
   .entry-row {
     grid-template-columns: 16px 40px minmax(0, 1fr) 128px 32px;
+    grid-template-areas: "drag emoji name amt x";
     gap: 0 10px;
     align-items: center;
     padding: 5px 4px 5px 2px;
@@ -3152,6 +3211,19 @@ body.is-row-dragging .main {
   }
   .entry-row-auto .input { opacity: 1; color: var(--ws-muted); }
   .entry-row-auto .input:hover { background: transparent; }
+
+  .entry-row-auto {
+    grid-template-columns: 14px 34px minmax(0, 1fr) minmax(76px, 112px) 44px;
+    grid-template-areas: "drag emoji name amt x";
+  }
+  .entry-row .ws-emoji { grid-area: emoji; }
+  .entry-row > input.input:not(.amt-input),
+  .entry-row-auto input[readonly]:not(.amt-input),
+  .entry-row-auto .loan-auto-name { grid-area: name; min-width: 0; }
+  .entry-row input.amt-input { grid-area: amt; }
+  .entry-row-auto .loan-toggle { grid-area: x; }
+  .loan-toggle { background: var(--ws-track); }
+  .loan-toggle[aria-checked="true"] { background: var(--ws-green); }
   .entry-row .btn-icon {
     width: 32px;
     height: 32px;
@@ -3762,6 +3834,7 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
   .row-list { gap: 0; }
   .entry-row {
     grid-template-columns: 14px 34px minmax(120px, 1fr) minmax(76px, 112px) 28px;
+    grid-template-areas: "drag emoji name amt x";
     gap: 0 8px;
     padding: 4px 2px;
     border-radius: 0;
@@ -3770,6 +3843,12 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
   .row-list > .entry-row:last-child { border-bottom: 0; }
   .entry-row:hover { background: transparent; }
   .entry-row-auto { border-top: 1px solid var(--ws-line); border-bottom: 0; margin-top: 0; }
+
+  .entry-row-auto {
+    grid-template-columns: 14px 34px minmax(120px, 1fr) minmax(76px, 112px) 44px;
+    grid-template-areas: "drag emoji name amt x";
+  }
+  .entry-row-auto .loan-toggle { grid-area: x; }
   .ws-emoji { width: 34px; height: 34px; border-radius: 10px; font-size: 17px; background: color-mix(in srgb, var(--ws-text) 5%, transparent); }
   button.ws-emoji:hover { transform: scale(1.06); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ws-terracotta) 50%, transparent); }
   .entry-row .input { font-weight: 600; font-size: 15.5px; padding: 7px 8px; min-height: 38px; border-radius: 9px; }

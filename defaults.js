@@ -117,10 +117,12 @@
     Object.keys(monthsIn).forEach((key) => {
       if (!/^\d{4}-\d{2}$/.test(key)) return;
       const month = isPlainObject(monthsIn[key]) ? monthsIn[key] : {};
-      months[key] = {
+      const nextMonth = {
         income: sanitizeEntries(month.income, DEFAULT_INCOME),
         expenses: sanitizeEntries(month.expenses, DEFAULT_EXPENSES),
       };
+      if (month.includeLoanPayoff === false) nextMonth.includeLoanPayoff = false;
+      months[key] = nextMonth;
     });
 
     if (Object.keys(months).length === 0) {
@@ -231,6 +233,7 @@
       income: remap(source.income),
       expenses: remap(source.expenses),
     };
+    if (source.includeLoanPayoff === false) copied.includeLoanPayoff = false;
     const next = {
       ...state,
       months: { ...state.months, [targetKey]: copied },

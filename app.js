@@ -144,18 +144,14 @@
   function totals() {
     const month = currentMonth();
     const incomeTotal = Calc.sumAmounts(month.income);
-    const loanPayoff = loanMonthlyTotal();
-    const expenseTotal = Calc.roundMoney(Calc.sumAmounts(month.expenses) + loanPayoff);
+    const loanPayoff = Calc.includedLoanPayoff(month, state.loans);
+    const expenseTotal = Calc.monthExpenseTotal(month, state.loans);
     const remaining = Calc.leftover(incomeTotal, expenseTotal);
     return { month, incomeTotal, expenseTotal, remaining, loanPayoff };
   }
 
   function loanMonthlyTotal() {
-    return Math.round(
-      (state.loans || [])
-        .filter((loan) => Calc.currentLoanBalance(loan) > 0)
-        .reduce((sum, loan) => sum + Calc.parseMoney(loan.monthlyPayment), 0)
-    );
+    return Calc.loanMonthlyTotal(state.loans);
   }
 
   function previousMonthKey() {
@@ -1220,15 +1216,20 @@
         .join(""),
       "  </div>",
       kind === "expense" && loanMonthlyTotal() > 0
-        ? [
-            '<div class="entry-row entry-row-auto">',
-            '  <span></span>',
-            '  <span class="ws-emoji" aria-hidden="true">🏦</span>',
-            '  <input class="input" value="Loans (monthly payoff)" readonly aria-label="Loans monthly payoff, from the Loans tab" />',
-            `  <input class="input amt-input" value="${escapeHtml(String(loanMonthlyTotal()))}" readonly inputmode="numeric" aria-label="Loans monthly payoff amount" />`,
-            '  <span class="auto-tag" title="Updates automatically from the Loans tab">Auto</span>',
-            "</div>",
-          ].join("")
+        ? (function () {
+            const included = Calc.isLoanPayoffIncluded(currentMonth());
+            return [
+              `<div class="entry-row entry-row-auto${included ? "" : " is-off"}">`,
+              "  <span></span>",
+              '  <span class="ws-emoji" aria-hidden="true">🏦</span>',
+              '  <span class="input loan-auto-name">Loans (monthly payoff)</span>',
+              `  <input class="input amt-input" value="${escapeHtml(String(loanMonthlyTotal()))}" readonly inputmode="numeric" aria-label="Loans monthly payoff amount" />`,
+              `  <button type="button" class="loan-toggle" role="switch" aria-checked="${
+                included ? "true" : "false"
+              }" data-action="toggle-loan-payoff" title="Include in this month's expenses" aria-label="Include loan payoff in this month's expenses"><span class="loan-toggle-knob" aria-hidden="true"></span></button>`,
+              "</div>",
+            ].join("");
+          })()
         : "",
       `  <div class="add-row"><button class="btn btn-quiet btn-small" type="button" data-action="add-row" data-kind="${kind}">Add another ${
         kind === "income" ? "income" : "expense"
@@ -2484,6 +2485,14 @@
       case "copy-last":
         copyLast();
         break;
+      case "toggle-loan-payoff": {
+        const month = currentMonth();
+        if (Calc.isLoanPayoffIncluded(month)) month.includeLoanPayoff = false;
+        else delete month.includeLoanPayoff;
+        markDirty();
+        renderAll();
+        break;
+      }
       case "add-row":
         addRow(target.dataset.kind);
         break;
