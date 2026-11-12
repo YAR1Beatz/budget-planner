@@ -1315,6 +1315,8 @@
         : `<div class="ws-desk-progress ws-desk-only"><div class="progress-label"><span>Progress</span><span>${progress}%</span></div><div class="progress-track"><div class="progress-fill goal" style="width:${progress}%;background:${progressColour(progress)}"></div></div></div>`,
       goal.deadline ? `  <div class="deadline-note">${deadlineNote(goal, saved, target)}</div>` : "",
       `  <div class="ws-edit-block${editingCards.has("goal:" + goal.id) ? " is-open" : ""}">`,
+      '  <label class="deadline-field card-name-field"><span class="field-label">Name</span>',
+      `    <input class="input input-sm" type="text" enterkeyhint="done" autocomplete="off" data-gfield="name" data-goal="${goal.id}" value="${escapeHtml(goal.name || "")}" aria-label="Goal name" /></label>`,
       '  <div class="goal-amounts">',
       '    <label class="deadline-field"><span class="field-label">Target</span>',
       `      <input class="input input-sm amt-input" inputmode="numeric" data-gfield="target" data-goal="${goal.id}" value="${escapeHtml(goal.target)}" aria-label="Goal target in ${state.currency}" /></label>`,
@@ -1638,6 +1640,19 @@
       "</div>",
       `<p class="payoff-line">${escapeHtml(payoffText)}</p>`,
       `  <div class="ws-edit-block${editing ? " is-open" : ""}">`,
+      '  <div class="loan-edit-fields">',
+      '    <label class="deadline-field card-name-field"><span class="field-label">Name</span>',
+      `      <input class="input input-sm" type="text" enterkeyhint="done" autocomplete="off" data-lfield="name" data-loan="${loan.id}" value="${escapeHtml(loan.name || "")}" aria-label="Loan name" /></label>`,
+      '    <label class="deadline-field"><span class="field-label">Starting balance</span>',
+      `      <input class="input input-sm amt-input" inputmode="numeric" enterkeyhint="done" data-lfield="startingBalance" data-loan="${loan.id}" value="${escapeHtml(loan.startingBalance || "")}" aria-label="Starting balance in ${state.currency}" /></label>`,
+      '    <label class="deadline-field"><span class="field-label">Monthly payment</span>',
+      `      <input class="input input-sm amt-input" inputmode="numeric" enterkeyhint="done" data-lfield="monthlyPayment" data-loan="${loan.id}" value="${escapeHtml(loan.monthlyPayment || "")}" aria-label="Monthly payment in ${state.currency}" /></label>`,
+      '    <label class="deadline-field"><span class="field-label">Interest rate %</span>',
+      `      <input class="input input-sm" type="text" inputmode="decimal" enterkeyhint="done" data-lfield="interestRate" data-loan="${loan.id}" value="${escapeHtml(String(loan.interestRate || "").replace(/\s*%\s*$/, "").trim())}" aria-label="Interest rate in percent" /></label>`,
+      '    <label class="deadline-field"><span class="field-label">Start date</span>',
+      `      <input class="input input-sm" type="date" data-lfield="startDate" data-loan="${loan.id}" value="${escapeHtml(loan.startDate || "")}" aria-label="Loan start date" /></label>`,
+      '    <p class="loan-edit-hint">Remaining is the starting balance minus the payments you log below.</p>',
+      "  </div>",
       suggestionNote(loan, balance),
       '  <h3 class="subhead">Log a payment</h3>',
       '  <div class="form-grid-3 pay-row">',
@@ -2551,6 +2566,60 @@
     try { el.select(); } catch (err) {}
   }
 
+  // After editing a card field, refresh the page once focus has left the
+  // inputs. Re-rendering right away would swallow the tap on Done/Edit.
+  let softRenderTimer = null;
+  function softRender() {
+    clearTimeout(softRenderTimer);
+    softRenderTimer = setTimeout(() => {
+      const a = document.activeElement;
+      if (a && /^(INPUT|SELECT|TEXTAREA)$/.test(a.tagName)) return;
+      renderAll();
+    }, 350);
+  }
+
+  function setCardField(el) {
+    const ds = el && el.dataset;
+    if (!ds) return false;
+    if (ds.lfield) {
+      const loan = (state.loans || []).find((l) => String(l.id) === String(ds.loan));
+      if (!loan) return true;
+      let v = el.value;
+      if (ds.lfield === "startingBalance" || ds.lfield === "monthlyPayment") {
+        const w = rawWhole(v);
+        v = w === "" ? "0" : w;
+      } else if (ds.lfield === "interestRate") {
+        v = String(v).replace(/%/g, "").trim() || "0";
+      } else if (ds.lfield === "name") {
+        v = String(v).trim() || loan.name || "Untitled loan";
+      }
+      if (loan[ds.lfield] !== v) {
+        loan[ds.lfield] = v;
+        markDirty();
+      }
+      softRender();
+      return true;
+    }
+    if (ds.gfield) {
+      const goal = (state.goals || []).find((g) => String(g.id) === String(ds.goal));
+      if (!goal) return true;
+      let v = el.value;
+      if (ds.gfield === "target" || ds.gfield === "saved") {
+        const w = rawWhole(v);
+        v = w === "" ? "0" : w;
+      } else if (ds.gfield === "name") {
+        v = String(v).trim() || goal.name || "Untitled goal";
+      }
+      if (goal[ds.gfield] !== v) {
+        goal[ds.gfield] = v;
+        markDirty();
+      }
+      softRender();
+      return true;
+    }
+    return false;
+  }
+
   function onAmountBlur(event) {
     const el = event.target;
     if (!isAmountInput(el) || el.readOnly) return;
@@ -2559,14 +2628,10 @@
       updateRow(el.dataset.kind, el.dataset.id, "amount", raw === "" ? "0" : raw);
       return;
     }
-    if (el.dataset && el.dataset.gfield) {
-      const goal = (state.goals || []).find((g) => String(g.id) === String(el.dataset.goal));
-      if (goal && (el.dataset.gfield === "target" || el.dataset.gfield === "saved")) {
-        goal[el.dataset.gfield] = raw === "" ? "0" : raw;
-        markDirty();
-        renderAll();
-        return;
-      }
+    if (el.dataset && (el.dataset.gfield || el.dataset.lfield)) {
+      setCardField(el);
+      if (raw !== "") el.value = formatWhole(raw);
+      return;
     }
     if (el.dataset && el.dataset.cfield === "amount") {
       const c = findContrib(el);
@@ -2627,18 +2692,8 @@
 
   function onChange(event) {
     const el = event.target;
-    if (el.dataset && el.dataset.gfield) {
-      const goal = (state.goals || []).find((g) => String(g.id) === String(el.dataset.goal));
-      if (goal) {
-        let v = el.value;
-        if (el.dataset.gfield === "target" || el.dataset.gfield === "saved") {
-          const w = rawWhole(v);
-          v = w === "" ? "0" : w;
-        }
-        goal[el.dataset.gfield] = v;
-        markDirty();
-        renderAll();
-      }
+    if (el.dataset && (el.dataset.gfield || el.dataset.lfield)) {
+      setCardField(el);
       return;
     }
     if (el.dataset && el.dataset.cfield) {
@@ -2676,6 +2731,11 @@
   }
 
   function onKey(event) {
+    if (event.key === "Enter" && event.target && event.target.dataset && (event.target.dataset.lfield || event.target.dataset.gfield)) {
+      event.preventDefault();
+      event.target.blur();
+      return;
+    }
     if (event.key === "Escape") {
       if (monthPickerOpen) {
         monthPickerOpen = false;
