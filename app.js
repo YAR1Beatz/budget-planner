@@ -172,6 +172,11 @@
     scheduleSave();
   }
 
+  function touchCurrentMonth() {
+    const month = state && state.months && state.months[state.selectedMonth];
+    if (month) month.updatedAt = Defaults.isoNow();
+  }
+
   function scheduleSave() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => saveNow({ push: false }), 400);
@@ -505,6 +510,25 @@
   let iconPicker = null;
   let monthPickerOpen = false;
 
+  const MONTH_DEL_ICON =
+    '<svg class="month-del-icon" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M5.5 1.5A.5.5 0 0 1 6 1h4a.5.5 0 0 1 .5.5V2h3a.5.5 0 0 1 0 1h-1v10a1.5 1.5 0 0 1-1.5 1.5h-7A1.5 1.5 0 0 1 2 13V3H1a.5.5 0 0 1 0-1h3v-.5zM3 3v10a.5.5 0 0 0 .5.5h7A.5.5 0 0 0 11 13V3H3zm2.5 2a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5zm3 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0v-6a.5.5 0 0 1 .5-.5z"/></svg>';
+
+  function monthCount() {
+    return Object.keys(state.months || {}).length;
+  }
+
+  function renderMonthDeleteBtn(key, extraClass) {
+    const only = monthCount() <= 1;
+    const title = only ? "You need to keep at least one month" : `Delete ${Calc.monthTitle(key)}`;
+    const cls = `btn-icon month-del${extraClass ? " " + extraClass : ""}`;
+    return (
+      `<button type="button" class="${cls}" data-action="delete-month" data-month="${key}"` +
+      ` aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"` +
+      (only ? " disabled" : "") +
+      `>${MONTH_DEL_ICON}</button>`
+    );
+  }
+
   // Phone: quick month switcher opened from the big month title.
   function renderMonthPicker() {
     const keys = Object.keys(state.months).sort();
@@ -513,10 +537,13 @@
         const selected = key === state.selectedMonth;
         const saved = Calc.monthHasData(state.months[key]);
         return [
-          `<button type="button" class="month-pick${selected ? " is-selected" : ""}" data-action="select-month" data-month="${key}" aria-current="${selected ? "true" : "false"}">`,
-          `  <span>${escapeHtml(Calc.monthTitle(key))}</span>`,
-          selected ? '  <span class="month-pick-check" aria-hidden="true">✓</span>' : saved ? '  <span class="dot" aria-hidden="true"></span>' : "",
-          "</button>",
+          '<div class="month-pick-row">',
+          `  <button type="button" class="month-pick${selected ? " is-selected" : ""}" data-action="select-month" data-month="${key}" aria-current="${selected ? "true" : "false"}">`,
+          `    <span>${escapeHtml(Calc.monthTitle(key))}</span>`,
+          selected ? '    <span class="month-pick-check" aria-hidden="true">✓</span>' : saved ? '    <span class="dot" aria-hidden="true"></span>' : "",
+          "  </button>",
+          `  ${renderMonthDeleteBtn(key)}`,
+          "</div>",
         ].join("");
       })
       .join("");
@@ -581,6 +608,7 @@
     if (cleaned) row.icon = cleaned;
     else delete row.icon;
     iconPicker = null;
+    touchCurrentMonth();
     markDirty();
     renderAll();
   }
@@ -823,12 +851,15 @@
           const selected = key === state.selectedMonth;
           const saved = Calc.monthHasData(state.months[key]);
           return [
+            '<div class="month-row">',
             `<button class="month-btn" type="button" data-action="select-month" data-month="${key}"`,
             ` aria-current="${selected ? "page" : "false"}"`,
             ` aria-label="${escapeHtml(Calc.monthTitle(key))}${saved ? ", has saved amounts" : ""}">`,
             `<span>${escapeHtml(Calc.monthShortTitle(key))}</span>`,
             saved ? '<span class="dot" aria-hidden="true"></span>' : "",
             "</button>",
+            renderMonthDeleteBtn(key),
+            "</div>",
           ].join("");
         })
         .join(""),
@@ -1754,7 +1785,7 @@
       input,
       '    <div class="modal-actions">',
       '      <button class="btn" type="button" data-action="close-modal">Cancel</button>',
-      `      <button class="btn btn-primary" type="button" data-action="confirm-modal">${escapeHtml(
+      `      <button class="btn ${modal.danger ? "btn-danger" : "btn-primary"}" type="button" data-action="confirm-modal">${escapeHtml(
         modal.confirmLabel || "OK"
       )}</button>`,
       "    </div>",
@@ -1854,6 +1885,7 @@
     const id = Calc.nextIdFrom([...month.income, ...month.expenses]);
     const row = { id, name: kind === "income" ? "New income" : "New expense", amount: "0" };
     monthRows(kind).push(row);
+    touchCurrentMonth();
     markDirty();
     renderAll();
     const input = document.querySelector(`.entry-row[data-id="${id}"] [data-field="name"]`);
@@ -1864,6 +1896,7 @@
     const rows = monthRows(kind);
     const index = rows.findIndex((row) => String(row.id) === String(id));
     if (index >= 0) rows.splice(index, 1);
+    touchCurrentMonth();
     markDirty();
     renderAll();
   }
@@ -1877,6 +1910,7 @@
     if (to < 0) { rows.splice(from, 0, row); return; }
     if (after) to += 1;
     rows.splice(to, 0, row);
+    touchCurrentMonth();
     markDirty();
     renderAll();
   }
@@ -2028,6 +2062,7 @@
     if (!row) return;
     if (row[field] === value) return;
     row[field] = value;
+    touchCurrentMonth();
     markDirty({ typing: true });
     if (field === "amount" || field === "name") scheduleSummaryRefresh();
   }
@@ -2038,6 +2073,43 @@
     markDirty();
     renderAll();
     showToast(`Added ${Calc.monthTitle(result.key)}`);
+  }
+
+  function promptDeleteMonth(key) {
+    if (!state.months[key]) return;
+    if (monthCount() <= 1) {
+      showToast("You need to keep at least one month.");
+      return;
+    }
+    const reopenPicker = monthPickerOpen;
+    const reopenNav = navOpen;
+    monthPickerOpen = false;
+    openModal({
+      title: `Delete ${Calc.monthTitle(key)}?`,
+      body: "This removes its income and expenses.",
+      confirmLabel: "Delete",
+      danger: true,
+      onConfirm: () => {
+        const result = Defaults.deleteMonth(state, key);
+        if (!result.ok) {
+          showToast(result.error);
+          monthPickerOpen = reopenPicker;
+          navOpen = reopenNav;
+          renderAll();
+          return;
+        }
+        state = result.state;
+        monthPickerOpen = reopenPicker;
+        navOpen = reopenNav;
+        markDirty();
+        renderAll();
+        showToast(`Deleted ${Calc.monthTitle(key)}`);
+      },
+      onCancel: () => {
+        monthPickerOpen = reopenPicker;
+        navOpen = reopenNav;
+      },
+    });
   }
 
   function copyLast() {
@@ -2175,7 +2247,9 @@
   }
 
   function closeModal() {
+    const cancel = modal && modal.onCancel;
     modal = null;
+    if (cancel) cancel();
     renderAll();
   }
 
@@ -2495,6 +2569,10 @@
         navOpen = false;
         addMonth();
         break;
+      case "delete-month":
+        event.preventDefault();
+        promptDeleteMonth(target.dataset.month);
+        break;
       case "open-month-picker":
         navOpen = false;
         monthPickerOpen = true;
@@ -2550,6 +2628,7 @@
         const month = currentMonth();
         if (Calc.isLoanPayoffIncluded(month)) month.includeLoanPayoff = false;
         else delete month.includeLoanPayoff;
+        touchCurrentMonth();
         markDirty();
         renderAll();
         break;

@@ -156,6 +156,75 @@
     return "p" + (max + 1);
   }
 
+  function monthStamp(month) {
+    return timeOf(month && month.updatedAt);
+  }
+
+  function readDeletedMonths(data) {
+    const raw = data && data.deletedMonths && typeof data.deletedMonths === "object" ? data.deletedMonths : {};
+    const out = {};
+    Object.keys(raw).forEach((key) => {
+      if (timeOf(raw[key])) out[key] = raw[key];
+    });
+    return out;
+  }
+
+  // Union months from both copies. A deleted month stays gone unless it was
+  // explicitly created again after the tombstone (month.updatedAt is newer).
+  // Months without their own timestamp cannot beat a tombstone, so a later
+  // edit to a *different* month on the other device does not bring it back.
+  function mergeMonthState(localData, cloudData, localTime, cloudTime) {
+    const localMonths = (localData && localData.months && typeof localData.months === "object") ? localData.months : {};
+    const cloudMonths = (cloudData && cloudData.months && typeof cloudData.months === "object") ? cloudData.months : {};
+    const localTombs = readDeletedMonths(localData);
+    const cloudTombs = readDeletedMonths(cloudData);
+    const tombs = { ...cloudTombs };
+    Object.keys(localTombs).forEach((key) => {
+      if (timeOf(localTombs[key]) >= timeOf(tombs[key])) tombs[key] = localTombs[key];
+    });
+    const keys = Array.from(new Set([].concat(Object.keys(localMonths), Object.keys(cloudMonths), Object.keys(tombs))));
+    const months = {};
+    const deletedMonths = {};
+    keys.forEach((key) => {
+      const localMonth = localMonths[key];
+      const cloudMonth = cloudMonths[key];
+      const localStamp = monthStamp(localMonth);
+      const cloudStamp = monthStamp(cloudMonth);
+      // Only an explicit per-month time can beat a tombstone. Falling back to
+      // the profile time would let a later edit of a different month restore it.
+      const liveStamp = Math.max(localStamp, cloudStamp);
+      const tomb = timeOf(tombs[key]);
+      if (tomb && tomb >= liveStamp) {
+        deletedMonths[key] = tombs[key];
+        return;
+      }
+      if (localMonth && cloudMonth) {
+        // localTime / cloudTime are already millisecond timestamps from profileTime.
+        const localProfile = typeof localTime === "number" ? localTime : timeOf(localTime);
+        const cloudProfile = typeof cloudTime === "number" ? cloudTime : timeOf(cloudTime);
+        if (cloudStamp !== localStamp) {
+          months[key] = cloudStamp > localStamp ? cloudMonth : localMonth;
+        } else if (cloudProfile !== localProfile) {
+          months[key] = cloudProfile > localProfile ? cloudMonth : localMonth;
+        } else {
+          months[key] = stableStringify(cloudMonth) > stableStringify(localMonth) ? cloudMonth : localMonth;
+        }
+      } else {
+        months[key] = localMonth || cloudMonth;
+      }
+    });
+    return { months, deletedMonths };
+  }
+
+  function withMergedMonths(winnerData, localData, cloudData, localTime, cloudTime) {
+    const merged = mergeMonthState(localData, cloudData, localTime, cloudTime);
+    const data = { ...(winnerData || {}) };
+    data.months = merged.months;
+    if (Object.keys(merged.deletedMonths).length) data.deletedMonths = merged.deletedMonths;
+    else delete data.deletedMonths;
+    return data;
+  }
+
   // Merge two stores budget by budget. Every budget on either side is kept;
   // when both sides have the same budget the most recently edited copy wins.
   // A budget is only removed when it was deleted after its last edit.
@@ -216,8 +285,11 @@
       } else {
         time = Math.max(lt, ct);
       }
+      // Months are merged with tombstones so a deleted month is not restored
+      // by a later edit to a different month on the other device. Goals, loans
+      // and the rest of the budget still follow the newest profile edit.
       // The tab and month this device is looking at always stay this device's.
-      winner = { ...winner, data: keepLocalUi(winner.data, lp.data) };
+      winner = { ...winner, data: keepLocalUi(withMergedMonths(winner.data, lp.data, cp.data, lt, ct), lp.data) };
       keep(winner, time);
     });
 
@@ -258,5 +330,5 @@
     };
   }
 
-  return { UI_FIELDS, withoutUi, stamp, timeOf, substanceScore, choose, merge, uidOf, isBlankProfile, isFreshPlaceholder, signature };
+  return { UI_FIELDS, withoutUi, stamp, timeOf, substanceScore, choose, merge, mergeMonthState, uidOf, isBlankProfile, isFreshPlaceholder, signature };
 });

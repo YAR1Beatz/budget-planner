@@ -349,6 +349,54 @@ body.is-mac .titlebar {
   box-shadow: var(--shadow-soft);
 }
 
+.month-row,
+.month-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  width: 100%;
+}
+
+.month-row .month-btn,
+.month-pick-row .month-pick {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.month-del {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.month-del:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--soft-red, #c45c4a) 16%, transparent);
+  color: var(--soft-red, #c45c4a);
+  opacity: 1;
+}
+
+.month-del:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.month-del-icon { display: block; }
+
+.btn-danger {
+  background: var(--soft-red, #c45c4a);
+  color: #fff;
+  border-color: transparent;
+}
+
+.btn-danger:hover {
+  filter: brightness(0.95);
+}
+
 .dot {
   width: 7px;
   height: 7px;
@@ -3815,6 +3863,7 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
   .profile-switcher-btn:hover { box-shadow: none; background: var(--ws-hover); }
   .ws-side-avatar.ws-desk-only { width: 30px; height: 30px; flex-basis: 30px; border-radius: 10px; font-size: 14px; box-shadow: none; }
   .month-btn { padding: 7px 10px; font-size: 14px; border-radius: 10px; }
+  .month-del { width: 28px; height: 28px; min-width: 28px; }
   .month-btn[aria-current="page"] { font-weight: 700; }
   .sidebar .btn {
     background: transparent;
@@ -3945,7 +3994,9 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
     min-height: min-content;
     overflow: visible;
   }
-  .sidebar .month-btn { min-height: 44px; flex: 0 0 auto; }
+  .sidebar .month-row { flex: 0 0 auto; width: 100%; }
+  .sidebar .month-btn { min-height: 44px; flex: 1 1 auto; }
+  .sidebar .month-del { width: 44px; height: 44px; min-width: 44px; }
 
   /* Big month title opens the month picker */
   .ws-title-btn {
@@ -3974,6 +4025,8 @@ html[data-theme="bright"] .debtfree-card.next-payoff-card::before { background: 
   .ws-title-btn:focus-visible { outline: 2px solid var(--ws-terracotta); outline-offset: 4px; border-radius: 8px; }
 
   .month-pick-list { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 12px; }
+  .month-pick-row { gap: 4px; }
+  .month-pick-row .month-del { width: 44px; height: 44px; min-width: 44px; }
   .month-pick {
     appearance: none;
     border: 0;
